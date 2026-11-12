@@ -1,0 +1,387 @@
+# NX Horizon
+
+NX Horizon is an experimental iOS launcher for Nintendo Switch game ports
+compiled for iPhone with [NX2Apple](https://github.com/LNPANDY/NX2Apple). It
+organizes ports in a console-inspired library and hands them off to
+[LiveContainer](https://github.com/LiveContainer/LiveContainer) to launch.
+
+NX Horizon is **not** an emulator, a game compiler, or a replacement for
+NX2Apple or LiveContainer. It does not include games or game binaries.
+For game launching, NX Horizon currently requires games to be installed in
+LiveContainer. Installing a game's IPA directly as a standalone iOS app with
+SideStore is not a supported launch path.
+
+> **Experimental software:** expect incomplete features, compatibility issues,
+> and breaking changes. Use it at your own discretion and do not rely on it as
+> the only copy of your game metadata or configuration.
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Getting started](#getting-started)
+- [Building games with NX2Apple](#building-games-with-nx2apple)
+- [Installing games in LiveContainer](#installing-games-in-livecontainer)
+- [Adding a game to NX Horizon](#adding-a-game-to-nx-horizon)
+- [Features](#features)
+- [Building NX Horizon for iOS](#building-nx-horizon-for-ios)
+- [Development](#development)
+- [Project structure](#project-structure)
+- [Screenshots](#screenshots)
+- [Contributing](#contributing)
+- [Limitations and support](#limitations-and-support)
+
+## How it works
+
+The projects have separate responsibilities:
+
+1. **NX2Apple** compiles a compatible game port into an iOS app package. Choose
+   NX2Apple's **standalone IPA** output for each game; do not use the NX2Apple
+   shell build.
+2. **LiveContainer** imports and runs those standalone game IPAs on the device.
+   The game must be installed inside LiveContainer for NX Horizon to launch it.
+3. **NX Horizon** stores the LiveContainer launch URL and metadata for each
+   game, presents the library, and opens that URL when the game is launched.
+
+SideStore can sign and install iOS apps, but it is not the runtime or launch
+bridge for games installed as separate apps. iOS does not provide NX Horizon a
+public API to enumerate installed apps or launch an arbitrary app by bundle
+identifier. NX Horizon can open a URL scheme only when the target app
+explicitly registers and supports it; NX Horizon does not currently support a
+game-specific URL scheme workflow. LiveContainer provides the launch URL
+integration that NX Horizon uses.
+
+NX Horizon does not build, patch, or distribute game ports. Game compilation
+and compatibility are handled by NX2Apple and the port itself.
+
+## Requirements
+
+### To use NX Horizon
+
+- An iPhone or iPad capable of running the installed versions of NX Horizon and
+  LiveContainer.
+- [LiveContainer](https://github.com/LiveContainer/LiveContainer) installed
+  and set up on the device.
+- Game ports compiled by
+  [NX2Apple](https://github.com/LNPANDY/NX2Apple) as standalone IPAs and
+  imported into LiveContainer.
+- A sideloading method such as [SideStore](https://github.com/SideStore/SideStore)
+  to sign and install NX Horizon and LiveContainer, where required. SideStore
+  installation of a game as a separate app does not make it launchable from
+  NX Horizon.
+
+Consult the official installation and compatibility documentation for
+[LiveContainer](https://livecontainer.github.io/docs/installation) and
+[SideStore](https://docs.sidestore.io/) for current device, iOS, signing, and
+refresh requirements.
+
+### To build NX Horizon from source
+
+- macOS with Xcode and its command-line tools installed.
+- [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/).
+- [CocoaPods](https://cocoapods.org/).
+
+The build script uses the checked-in pnpm lockfile and generates the ignored
+`ios/` directory with Expo prebuild.
+
+## Getting started
+
+1. Install and configure LiveContainer using its
+   [official installation guide](https://livecontainer.github.io/docs/installation).
+2. Build each supported game port with NX2Apple's **standalone IPA** output.
+   Do not use the NX2Apple shell output.
+3. Import each game IPA into LiveContainer. In its Apps view, tap the **+**
+   button, select the IPA, and complete LiveContainer's import flow. This
+   step is required: NX Horizon launches games through LiveContainer and
+   cannot launch a game installed only as a separate SideStore app.
+4. In LiveContainer, copy the launch URL for each installed game:
+   - If the game has multiple containers, select the intended container first.
+   - Long-press the game and choose **Add to Home Screen**.
+   - Choose **Copy Launch URL**. This copies the launch URL; you do not need to
+     create a Home Screen shortcut.
+5. Open NX Horizon and open the import dialog. On the home screen, either swipe
+   the game carousel to the far right and tap its dashed **Add game** tile, or
+   tap the orange bag-shaped button in the bottom dock (the eShop-style
+   shortcut). Both open the same dialog. In the Library screen, use the **+**
+   button in the header.
+6. Paste the copied LiveContainer URL. Review the detected game information
+   and save it to the library.
+7. Select the game in NX Horizon to launch it through LiveContainer.
+
+For detailed LiveContainer instructions, see its
+[Add to Home Screen / Copy Launch URL guide](https://livecontainer.github.io/docs/guides/add-to-home-screen).
+The guide describes copying the URL independently of actually creating a
+shortcut.
+
+### Link the LiveContainer folder (optional)
+
+Basic launching uses the saved URL. Linking the LiveContainer folder in NX
+Horizon is optional, but enables features that read or write a game's
+configuration in its LiveContainer container.
+
+You can link the folder during onboarding or later in **Settings →
+LiveContainer → Link LiveContainer Folder**. In the iOS folder picker, select
+the LiveContainer root folder and grant access. NX Horizon stores a
+security-scoped folder reference on the device so it can locate game
+containers. You can change or unlink this folder from the same settings
+section.
+
+## Building games with NX2Apple
+
+NX Horizon requires a separate standalone iOS app for each game port. Use the
+instructions and compatibility notes in the
+[NX2Apple repository](https://github.com/LNPANDY/NX2Apple), and select its
+**standalone IPA** build mode.
+
+Do **not** select the NX2Apple shell build for use with NX Horizon. The shell
+is NX2Apple's own launcher environment; NX Horizon instead imports individual
+standalone game IPAs into LiveContainer and stores their LiveContainer launch
+URLs.
+
+NX2Apple is maintained separately. NX Horizon cannot convert a game, create
+an IPA from a ROM, or make an incompatible port run.
+
+Here, **standalone IPA** describes the game package format produced by
+NX2Apple, as opposed to its shell build. It does not mean that NX Horizon can
+launch the game after it is installed separately on the iOS Home Screen. The
+standalone IPA must still be imported into LiveContainer for NX Horizon's
+launch integration to work.
+
+## Installing games in LiveContainer
+
+Use the official
+[LiveContainer installation guide](https://livecontainer.github.io/docs/installation)
+to install LiveContainer and set up its signing method. To import a compiled
+game:
+
+1. Open LiveContainer and go to its **Apps** view.
+2. Tap **+** and select the game's standalone IPA.
+3. Follow LiveContainer's prompts to install/import the app.
+4. Launch the imported game once from LiveContainer if needed, then copy its
+   launch URL as described above.
+
+NX Horizon does not embed LiveContainer or install game IPAs itself. Both
+NX Horizon and LiveContainer must be installed separately on the device. A
+game installed directly through SideStore (or another sideloading tool) as its
+own iOS app is outside NX Horizon's supported launch flow; launch that app
+from iOS instead.
+
+## Adding a game to NX Horizon
+
+1. Open the import dialog from the dashed **Add game** tile at the far right of
+   the home carousel, the orange eShop-style bag button in the home dock, or
+   the **+** button in the Library header.
+2. Paste the copied LiveContainer launch URL, or enter a supported title ID or
+   game name.
+3. Review the title and artwork preview. If metadata cannot be matched, enter a
+   title manually.
+4. Save the game. The carousel's dashed tile and the dock button both open this
+   same import dialog.
+
+When a URL contains a Nintendo Switch title ID, NX Horizon attempts to retrieve
+metadata and artwork from the NLib API and can fall back to its bundled
+catalog. NLib provides lookup by Title ID; its documented API does not provide
+search by game name. When a URL has no Title ID, NX Horizon searches its
+curated on-device catalog. If the search returns multiple plausible games, it
+asks you to choose instead of silently assigning the first result. A custom
+LiveContainer app can also be added with a manually entered name. Metadata
+lookup requires network access; saved metadata and the launch URL are stored
+locally with the library entry.
+
+Metadata coverage is incomplete: NX Horizon does not currently recognize
+every Nintendo Switch title automatically. The local catalog and detection
+rules are still being improved. If a game is missing or detected incorrectly,
+please open an issue with the launch URL's Title ID (when available), the
+search term, and the result you expected. Do not attach game files or other
+copyrighted content.
+
+The library can also be populated with a title ID or name when a launch URL is
+not available, but a usable LiveContainer URL is required to launch that
+entry. Adding an app's display name or bundle identifier does not enable
+direct launching of a separately installed iOS app.
+
+## Features
+
+- Portrait and landscape layouts, with a landscape console-inspired home
+  screen.
+- Game carousel and searchable library with favorites and recently played
+  entries.
+- Game metadata, artwork, play-time tracking, and manual title entry.
+- LiveContainer URL launching and optional LiveContainer folder linking.
+- Per-game launch settings for supported ports, including operation mode,
+  frame-rate target, render scale, upscaler, HUD, motion, and language.
+- Optional direct-boot configuration that writes supported launch settings to
+  the linked LiveContainer game container.
+- Bluetooth/game controller status, button input, and deadzone controls.
+- English and Spanish UI translations.
+- Automatic, light, and dark appearance modes.
+
+Feature availability depends on the device, the generated iOS build, the
+installed LiveContainer version, and the game port.
+
+## Building NX Horizon for iOS
+
+From the repository root on macOS, run:
+
+```sh
+./build.sh
+```
+
+The script:
+
+1. Installs JavaScript dependencies with `pnpm install --frozen-lockfile`.
+2. Regenerates the iOS project with `expo prebuild`.
+3. Installs CocoaPods dependencies.
+4. Archives the app in Release configuration with code signing disabled.
+5. Packages the `.app` into an unsigned IPA.
+
+The resulting file is:
+
+```text
+build/NXHorizon-unsigned.ipa
+```
+
+The `/build` directory is ignored by Git. The IPA is intentionally unsigned
+and has no provisioning profile; it is **not directly installable** on iOS.
+Sign it with SideStore or another compatible sideloading tool before
+installation. No Apple Team ID or signing credentials are required by the
+repository build script.
+
+The generated `ios/` project is also ignored and is recreated by the script.
+Local changes made directly in `ios/` will be discarded by the clean prebuild;
+use Expo config or config plugins for persistent native changes.
+
+## Development
+
+Install dependencies:
+
+```sh
+pnpm install --frozen-lockfile
+```
+
+Start the Expo development server:
+
+```sh
+pnpm start
+```
+
+Build and run the native iOS app on a configured simulator or device:
+
+```sh
+pnpm ios
+```
+
+This development command may use Xcode signing for a connected physical
+device. For a distribution-style unsigned Release IPA, use `./build.sh`
+instead.
+
+Run the available repository checks:
+
+```sh
+pnpm exec tsc --noEmit
+pnpm run verify-i18n
+bash -n build.sh
+```
+
+## Project structure
+
+```text
+.
+├── App.tsx                    # App entry point and top-level screen composition
+├── app.json                   # Expo and iOS configuration
+├── assets/                    # App icon and splash assets
+├── build.sh                   # Unsigned iOS Release IPA build
+├── modules/
+│   ├── nx-gamecontroller/     # Native game controller module
+│   └── nx-livecontainer/      # Native LiveContainer integration
+├── plugins/                   # Expo config plugins
+├── scripts/                   # Repository maintenance and validation scripts
+└── src/
+    ├── components/            # Library, Switch-inspired UI, and dialogs
+    ├── hooks/                 # React hooks, including game controller state
+    ├── i18n/                  # English and Spanish translations
+    ├── screens/               # Settings and game details
+    ├── services/              # Metadata lookup and LiveContainer URL parsing
+    ├── state/                 # Local library and focus stores
+    ├── theme/                 # Appearance provider and color palettes
+    └── types/                 # Shared TypeScript types
+```
+
+The game library, preferences, and launch settings are stored on-device using
+AsyncStorage. Game metadata and artwork may be requested from the configured
+metadata service when a title is added or refreshed.
+
+## Screenshots
+
+Screenshots of the app running on a device will be added here.
+
+## Contributing
+
+Contributions are welcome. NX Horizon is experimental, so discuss substantial
+behavior or architecture changes in an issue before investing in a large pull
+request.
+
+1. Search existing issues and pull requests before opening a new one.
+2. For a bug report or a title that is missing or detected incorrectly, include
+   the device model, iOS version, NX Horizon build, LiveContainer version,
+   steps to reproduce, the launch URL's Title ID when available, and the
+   incorrect or expected result. Do not include signing credentials, private
+   game files, or personal data.
+3. For a feature request, describe the user problem and how the change fits
+   NX Horizon's role as a launcher rather than a game compiler or runtime.
+4. Fork the repository and create a focused branch for your change.
+5. Follow the existing TypeScript, React Native, and Expo patterns. Keep
+   platform-specific behavior in native modules or Expo config plugins rather
+   than editing generated `ios/` files.
+6. Keep UI text in both `src/i18n/locales/en.json` and
+   `src/i18n/locales/es.json`.
+7. Run the relevant checks before opening a pull request:
+
+   ```sh
+   pnpm exec tsc --noEmit
+   pnpm run verify-i18n
+   bash -n build.sh
+   ```
+
+8. Open a pull request with a concise description, the reason for the change,
+   validation performed, and screenshots for visible UI changes when possible.
+
+Keep pull requests scoped and avoid bundling game IPAs, signing identities,
+provisioning profiles, or generated native build output.
+
+## Limitations and support
+
+- NX Horizon is an experimental launcher, not a Nintendo product and not
+  affiliated with Nintendo, NX2Apple, LiveContainer, or SideStore.
+- Game compilation, game compatibility, and LiveContainer behavior are outside
+  this repository's control. Report issues to the project responsible for the
+  failing component when appropriate.
+- NX Horizon does not distribute games, ROMs, keys, or game IPAs. Only use
+  software and files you are authorized to use.
+- Launching through NX Horizon requires a valid LiveContainer URL and a
+  compatible LiveContainer/game setup. A game installed separately through
+  SideStore is not directly launchable from NX Horizon; iOS does not expose a
+  public arbitrary-app launch API by bundle identifier, and NX Horizon does
+  not currently implement game-specific URL schemes.
+- Title-name matching when a LiveContainer URL does not include a recognizable
+  Title ID is limited to the bundled curated catalog. NLib lookup by Title ID
+  can provide metadata for IDs outside that catalog, but NLib's documented API
+  does not support searching titles by name.
+- Linking the LiveContainer folder is needed for container-based configuration
+  features, but not for opening a saved launch URL.
+- The project currently focuses on iOS. The presence of Expo cross-platform
+  tooling does not imply that every native integration works on Android or web.
+
+For support, open an issue in this repository with enough information to
+reproduce the problem, after checking the relevant
+[NX2Apple](https://github.com/LNPANDY/NX2Apple),
+[LiveContainer](https://github.com/LiveContainer/LiveContainer), or
+[SideStore](https://github.com/SideStore/SideStore) documentation.
+
+## Disclaimer
+
+NX Horizon is an independent experimental project and is not affiliated with,
+authorized, sponsored, or endorsed by Nintendo. Nintendo and Nintendo Switch
+are trademarks of Nintendo. All game names and related marks belong to their
+respective owners. NX Horizon does not provide or distribute Nintendo games or
+game files.

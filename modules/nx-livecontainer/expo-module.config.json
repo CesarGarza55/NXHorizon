@@ -1,0 +1,7 @@
+{
+  "name": "nx-livecontainer",
+  "platforms": ["ios"],
+  "ios": {
+    "modules": ["NxLiveContainerModule"]
+  }
+}

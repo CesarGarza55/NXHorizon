@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "NX Horizon",
+    "slug": "nx-horizon",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cesargarza.nxhorizon",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "livecontainer"
+        ],
+        "UISupportedInterfaceOrientations": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ],
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
+      }
+    },
+    "plugins": [
+      "expo-localization",
+      "expo-image",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "DEFAULT"
+        }
+      ],
+      [
+        "expo-status-bar",
+        {
+          "hidden": true,
+          "style": "light"
+        }
+      ],
+      "./plugins/withPersonalTeamSigning"
+    ]
+  }
+}

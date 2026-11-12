@@ -1,0 +1,42 @@
+{
+  "name": "nx-horizon",
+  "version": "1.0.0",
+  "description": "NX Horizon - Nintendo Switch Horizon OS Frontend",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~58.0.24",
+    "expo-clipboard": "~58.0.4",
+    "expo-document-picker": "~58.0.5",
+    "expo-file-system": "~58.0.13",
+    "expo-haptics": "~58.0.8",
+    "expo-image": "~58.0.18",
+    "expo-localization": "~58.0.5",
+    "expo-screen-orientation": "~58.0.4",
+    "expo-status-bar": "~58.0.5",
+    "expo-system-ui": "~58.0.7",
+    "i18next": "^27.1.1",
+    "nx-gamecontroller": "file:./modules/nx-gamecontroller",
+    "nx-livecontainer": "file:./modules/nx-livecontainer",
+    "react": "19.3.0",
+    "react-i18next": "^18.0.1",
+    "react-native": "0.88.1",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-reanimated": "4.7.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "verify-i18n": "node scripts/verify-i18n.js"
+  },
+  "private": true
+}

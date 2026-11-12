@@ -1,0 +1,7 @@
+{
+  "name": "nx-gamecontroller",
+  "platforms": ["ios"],
+  "ios": {
+    "modules": ["NxGameControllerModule"]
+  }
+}

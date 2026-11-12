@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <linearGradient id="horizonGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0" stop-color="#E5E7EB" stop-opacity="0.1"/>
+      <stop offset="0.3" stop-color="#F3F4F6" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="0.7" stop-color="#F3F4F6" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#E5E7EB" stop-opacity="0.1"/>
+    </linearGradient>
+    <bx:export>
+      <bx:file format="png" href="#object-0"/>
+      <bx:file format="png" href="#object-1" path="Untitled 2.png"/>
+      <bx:file format="png" href="#object-2" path="Untitled 3.png"/>
+      <bx:file format="png" href="#object-3" path="Untitled 4.png"/>
+    </bx:export>
+  </defs>
+  <rect x="-98.592" y="-84.687" width="1196.18" height="1184.85" fill="#0B131E" stroke="#1E293B" stroke-width="18" style="" id="object-0"/>
+  <path d="M 116 485 C 240 165, 784 165, 908 485 C 780 188, 244 188, 116 485 Z" fill="url(#horizonGrad)" id="object-1"/>
+  <g fill="#FF453A" id="object-2">
+    <path fill-rule="evenodd" d=" M 278 360 L 348 360 C 365 360, 376 373, 370 390 L 225 775 C 219 791, 204 798, 188 792 C 120 765, 90 695, 118 620 L 192 422 C 210 375, 240 360, 278 360 Z M 262 415 A 42 42 0 1 0 262 499 A 42 42 0 1 0 262 415 Z "/>
+    <path d="M 384.362 431.112 L 415 430 L 476 540 L 476 430 L 512 430 L 512 588 L 469.112 587.563 L 400.843 461.042 L 214.447 783.443 L 216.478 712.402 L 384.362 431.112 Z"/>
+  </g>
+  <g fill="#29B6F6" id="object-3">
+    <path fill-rule="evenodd" d=" M 746 360 L 676 360 C 659 360, 648 373, 654 390 L 799 775 C 805 791, 820 798, 836 792 C 904 765, 934 695, 906 620 L 832 422 C 814 375, 784 360, 746 360 Z M 792 545 A 42 42 0 1 0 792 629 A 42 42 0 1 0 792 545 Z "/>
+    <path d="M 511.939 430 L 553.939 430 L 602 482 L 630.816 428.502 L 666.475 428.356 L 625.399 504.431 L 808 718.873 L 791.856 751.265 L 603.495 530.515 L 554.047 588 L 512.047 588 L 578 507 L 511.939 430 Z"/>
+  </g>
+</svg>
