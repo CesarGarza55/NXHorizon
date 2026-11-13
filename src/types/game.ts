@@ -37,6 +37,11 @@ export interface GameMetadata {
   launchUrl?: string; // livecontainer://livecontainer-launch?...
   bundleName?: string;
   containerFolder?: string;
+  appStoreId?: string;
+  appStoreUrl?: string;
+  customTitle?: string;
+  customDescription?: string;
+  customCoverUrl?: string;
   launchConfig?: Partial<GameLaunchConfig>;
   needsMetadataSync?: boolean;
 }
@@ -54,6 +59,7 @@ export interface SpatialNode {
 
 export function getLocalizedDescription(game?: GameMetadata | null, lang?: string): string {
   if (!game) return '';
+  if (game.customDescription?.trim()) return game.customDescription;
   const currentLang = (lang || 'es').toLowerCase().startsWith('es') ? 'es' : 'en';
   if (game.localizedDescriptions && game.localizedDescriptions[currentLang]) {
     return game.localizedDescriptions[currentLang];
@@ -63,6 +69,19 @@ export function getLocalizedDescription(game?: GameMetadata | null, lang?: strin
     return game.localizedDescriptions[fallbackLang];
   }
   return game.description || '';
+}
+
+export function getGameTitle(
+  game?: (Pick<GameMetadata, 'title'> & Partial<Pick<GameMetadata, 'customTitle'>>) | null
+): string {
+  return game?.customTitle?.trim() || game?.title || '';
+}
+
+export function getGameCoverUrl(
+  game?: (Pick<GameMetadata, 'coverUrl'> & Partial<Pick<GameMetadata, 'customCoverUrl'>>) | null
+): string {
+  if (!game) return '';
+  return game.customCoverUrl !== undefined ? game.customCoverUrl.trim() : game.coverUrl || '';
 }
 
 export function getLocalizedGenre(game?: GameMetadata | null, lang?: string): string {

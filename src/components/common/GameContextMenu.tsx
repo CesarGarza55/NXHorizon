@@ -14,8 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata } from '../../types/game';
-import { ensureGameDirectBoot } from '../../../modules/nx-livecontainer';
+import { GameMetadata, getGameTitle } from '../../types/game';
+import { ensureGameDirectBoot, isNxNativeBundle } from '../../../modules/nx-livecontainer';
 import { useAppTheme } from '../../theme/ThemeProvider';
 
 interface GameContextMenuProps {
@@ -23,6 +23,7 @@ interface GameContextMenuProps {
   visible: boolean;
   onClose: () => void;
   onPlay: (game: GameMetadata) => void;
+  onEdit: (game: GameMetadata) => void;
   onOpenConfig: (game: GameMetadata) => void;
   onRefreshMetadata: (game: GameMetadata) => void;
   onDelete: (game: GameMetadata) => void;
@@ -33,6 +34,7 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
   visible,
   onClose,
   onPlay,
+  onEdit,
   onOpenConfig,
   onRefreshMetadata,
   onDelete,
@@ -44,6 +46,8 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
   const isLandscape = width > height;
 
   if (!game) return null;
+  const supportsNxNativeConfig = isNxNativeBundle(game.bundleName);
+  const displayTitle = getGameTitle(game);
 
   const handleAction = (action: () => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
@@ -101,7 +105,7 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
           >
             <View style={[styles.header, { borderBottomColor: colors.border }]}>
               <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-                {game.title}
+                {displayTitle}
               </Text>
               {game.publisher ? (
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -136,6 +140,23 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
                   { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
                   pressed && { borderColor: colors.accent },
                 ]}
+                onPress={() => handleAction(() => onEdit(game))}
+                accessibilityRole="button"
+              >
+                <Ionicons name="pencil-outline" size={20} color={colors.accent} />
+                <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+                  {t('details.editMetadata')}
+                </Text>
+              </Pressable>
+
+              {supportsNxNativeConfig && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionItem,
+                  isLandscape && styles.actionItemLandscape,
+                  { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
+                  pressed && { borderColor: colors.accent },
+                ]}
                 onPress={() => handleAction(() => onOpenConfig(game))}
                 accessibilityRole="button"
               >
@@ -144,6 +165,7 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
                   {t('contextMenu.gameConfig')}
                 </Text>
               </Pressable>
+              )}
 
               <Pressable
                 style={({ pressed }) => [
@@ -161,7 +183,7 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
                 </Text>
               </Pressable>
 
-              {game.containerFolder && (
+              {supportsNxNativeConfig && game.containerFolder && (
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionItem,
@@ -171,7 +193,7 @@ export const GameContextMenu: React.FC<GameContextMenuProps> = ({
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
-                    ensureGameDirectBoot(game.containerFolder).then((ok) => {
+                    ensureGameDirectBoot(game.containerFolder, undefined, game.bundleName).then((ok) => {
                       Alert.alert(
                         ok ? t('common.success') : t('contextMenu.liveContainerUnlinked'),
                         ok

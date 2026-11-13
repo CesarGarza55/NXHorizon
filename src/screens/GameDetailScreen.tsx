@@ -19,18 +19,20 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata, getLocalizedDescription, getLocalizedGenre } from '../types/game';
+import { GameMetadata, getGameTitle, getLocalizedDescription, getLocalizedGenre } from '../types/game';
 import { useGameStore } from '../state/useGameStore';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { useGamepad } from '../hooks/useGamepad';
 import { searchCatalogCandidates, GameCatalogEntry } from '../services/gameDatabase';
 import { scrapeGameByTitleId } from '../services/gameScraper';
+import { isNxNativeBundle } from '../../modules/nx-livecontainer';
 
 interface GameDetailScreenProps {
   game: GameMetadata;
   onBack: () => void;
   onLaunch: (game: GameMetadata) => void;
   onOpenConfig: (game: GameMetadata) => void;
+  onEdit: (game: GameMetadata) => void;
   onRefreshMetadata?: (game: GameMetadata) => void;
 }
 
@@ -41,6 +43,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   onBack,
   onLaunch,
   onOpenConfig,
+  onEdit,
   onRefreshMetadata,
 }) => {
   const { t, i18n } = useTranslation();
@@ -49,10 +52,16 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const { removeGame, recordPlaySession, updateGameMetadata, toggleFavorite } = useGameStore();
+  const { removeGame, updateGameMetadata, toggleFavorite } = useGameStore();
+  const supportsNxNativeConfig = isNxNativeBundle(game.bundleName);
+  const supportsMetadataLookup = Boolean(game.titleId || supportsNxNativeConfig);
+  const displayTitle = getGameTitle(game);
+  const actionCount = 3 + Number(supportsNxNativeConfig) + Number(supportsMetadataLookup);
+  const favoriteIndex = supportsNxNativeConfig ? 2 : 1;
+  const reidentifyIndex = supportsMetadataLookup ? favoriteIndex + 1 : -1;
+  const deleteIndex = favoriteIndex + 1 + Number(supportsMetadataLookup);
 
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
-  // Gamepad focus index: 0 = Launch, 1 = Config, 2 = Favorite, 3 = Re-identify, 4 = Delete
   const [focusedActionIdx, setFocusedActionIdx] = useState(0);
 
   // ScrollView refs for controller auto-scrolling
@@ -65,22 +74,18 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   // Auto-scroll action button into view when focusedActionIdx changes
   React.useEffect(() => {
     if (isLandscape) {
-      let targetY = 0;
-      if (focusedActionIdx === 1) targetY = 45;
-      else if (focusedActionIdx === 2) targetY = 105;
-      else if (focusedActionIdx === 3) targetY = 165;
-      else if (focusedActionIdx === 4) targetY = 230;
+      const targetY = Math.max(0, focusedActionIdx * 60 - 15);
       landscapeLeftScrollRef.current?.scrollTo({ y: targetY, animated: true });
     } else {
-      let targetY = 0;
-      if (focusedActionIdx === 1) targetY = 60;
-      else if (focusedActionIdx === 2) targetY = 120;
-      else if (focusedActionIdx === 3) targetY = 180;
-      else if (focusedActionIdx === 4) targetY = 240;
+      const targetY = focusedActionIdx * 60;
       portraitScrollRef.current?.scrollTo({ y: targetY, animated: true });
       setPortraitScrollY(targetY);
     }
   }, [focusedActionIdx, isLandscape]);
+
+  React.useEffect(() => {
+    setFocusedActionIdx((index) => Math.min(index, actionCount - 1));
+  }, [actionCount]);
 
   // Re-identification States
   const [isReidentifyVisible, setIsReidentifyVisible] = useState(false);
@@ -90,10 +95,10 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
 
   const handleOpenReidentify = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setReidentifyQuery(game.title);
-    setReidentifyCandidates(searchCatalogCandidates(game.title));
+    setReidentifyQuery(displayTitle);
+    setReidentifyCandidates(searchCatalogCandidates(displayTitle));
     setIsReidentifyVisible(true);
-  }, [game.title]);
+  }, [displayTitle]);
 
   const handleReidentifyQueryChange = (text: string) => {
     setReidentifyQuery(text);
@@ -173,15 +178,14 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
 
   const handleLaunch = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    recordPlaySession(game.id, 15);
     onLaunch(game);
-  }, [game, onLaunch, recordPlaySession]);
+  }, [game, onLaunch]);
 
   const handleDelete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.alert(
       t('details.confirmDeleteTitle'),
-      t('details.confirmDeleteMessage', { title: game.title }),
+      t('details.confirmDeleteMessage', { title: displayTitle }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -195,31 +199,37 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         },
       ]
     );
-  }, [game, removeGame, onBack, t]);
+  }, [game, displayTitle, removeGame, onBack, t]);
 
   const handleActionExecute = useCallback(
     (idx: number) => {
-      switch (idx) {
-        case 0:
-          handleLaunch();
-          break;
-        case 1:
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-          onOpenConfig(game);
-          break;
-        case 2:
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-          toggleFavorite(game.id);
-          break;
-        case 3:
-          handleOpenReidentify();
-          break;
-        case 4:
-          handleDelete();
-          break;
+      if (idx === 0) {
+        handleLaunch();
+      } else if (supportsNxNativeConfig && idx === 1) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        onOpenConfig(game);
+      } else if (idx === favoriteIndex) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        toggleFavorite(game.id);
+      } else if (supportsMetadataLookup && idx === reidentifyIndex) {
+        handleOpenReidentify();
+      } else if (idx === deleteIndex) {
+        handleDelete();
       }
     },
-    [handleLaunch, onOpenConfig, game, handleOpenReidentify, handleDelete, toggleFavorite]
+    [
+      handleLaunch,
+      onOpenConfig,
+      game,
+      handleOpenReidentify,
+      handleDelete,
+      toggleFavorite,
+      supportsNxNativeConfig,
+      favoriteIndex,
+      reidentifyIndex,
+      deleteIndex,
+      supportsMetadataLookup,
+    ]
   );
 
   // Full Gamepad Controls with auto-scroll support
@@ -236,8 +246,8 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
           setFocusedActionIdx((prev) => Math.max(0, prev - 1));
         }
       } else if (dir === 'down') {
-        if (focusedActionIdx < 4) {
-          setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+        if (focusedActionIdx < actionCount - 1) {
+          setFocusedActionIdx((prev) => Math.min(actionCount - 1, prev + 1));
         } else if (!isLandscape) {
           // In portrait, if already at button 4, pressing down scrolls the page down to view metadata/screenshots/description
           const nextY = Math.min(portraitScrollY + 200, 1000);
@@ -264,7 +274,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
             return next;
           });
         } else {
-          setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+          setFocusedActionIdx((prev) => Math.min(actionCount - 1, prev + 1));
         }
       }
     },
@@ -278,7 +288,10 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         onBack();
       } else if (button === 'A') {
         handleActionExecute(focusedActionIdx);
-      } else if (button === 'START' || button === 'SELECT' || button === 'X') {
+      } else if (
+        supportsNxNativeConfig &&
+        (button === 'START' || button === 'SELECT' || button === 'X')
+      ) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         onOpenConfig(game);
       }
@@ -307,6 +320,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         <Text style={styles.actionBtnPrimaryText}>{t('contextMenu.playNow')}</Text>
       </Pressable>
 
+      {supportsNxNativeConfig && (
       <Pressable
         style={({ pressed }) => [
           styles.actionBtnSecondary,
@@ -325,16 +339,17 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
           {t('contextMenu.gameConfig')}
         </Text>
       </Pressable>
+      )}
 
       <Pressable
         style={({ pressed }) => [
           styles.actionBtnSecondary,
           { backgroundColor: colors.surface, borderColor: colors.border },
-          focusedActionIdx === 2 && [styles.actionBtnFocusedSecondary, { borderColor: colors.accent }],
+          focusedActionIdx === favoriteIndex && [styles.actionBtnFocusedSecondary, { borderColor: colors.accent }],
           pressed && { borderColor: colors.accent },
         ]}
         onPress={() => {
-          setFocusedActionIdx(2);
+          setFocusedActionIdx(favoriteIndex);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
           toggleFavorite(game.id);
         }}
@@ -351,15 +366,16 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         </Text>
       </Pressable>
 
+      {supportsMetadataLookup && (
       <Pressable
         style={({ pressed }) => [
           styles.actionBtnSecondary,
           { backgroundColor: colors.surface, borderColor: colors.border },
-          focusedActionIdx === 3 && [styles.actionBtnFocusedSecondary, { borderColor: colors.accent }],
+          focusedActionIdx === reidentifyIndex && [styles.actionBtnFocusedSecondary, { borderColor: colors.accent }],
           pressed && { borderColor: colors.accent },
         ]}
         onPress={() => {
-          setFocusedActionIdx(3);
+          setFocusedActionIdx(reidentifyIndex);
           handleOpenReidentify();
         }}
         accessibilityRole="button"
@@ -369,16 +385,17 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
           {t('details.reidentify')}
         </Text>
       </Pressable>
+      )}
 
       <Pressable
         style={({ pressed }) => [
           styles.actionBtnSecondary,
           { backgroundColor: colors.surface, borderColor: colors.border },
-          focusedActionIdx === 4 && [styles.actionBtnFocusedSecondary, { borderColor: colors.destructive }],
+          focusedActionIdx === deleteIndex && [styles.actionBtnFocusedSecondary, { borderColor: colors.destructive }],
           pressed && { borderColor: colors.destructive },
         ]}
         onPress={() => {
-          setFocusedActionIdx(4);
+          setFocusedActionIdx(deleteIndex);
           handleDelete();
         }}
         accessibilityRole="button"
@@ -443,14 +460,9 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
       </View>
 
       <View style={[styles.metaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{t('details.playTime')}</Text>
+        <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{t('details.genre')}</Text>
         <Text style={[styles.metaValue, { color: colors.text }]} numberOfLines={1}>
-          {game.playTimeMinutes > 0
-            ? t('common.hoursAndMinutes', {
-                hours: Math.floor(game.playTimeMinutes / 60),
-                minutes: game.playTimeMinutes % 60,
-              })
-            : t('details.neverPlayed')}
+          {game.genre || t('details.unknown')}
         </Text>
       </View>
     </View>
@@ -538,7 +550,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         <Ionicons name="game-controller-outline" size={54} color={colors.border} style={styles.heroWatermark} />
         <View style={styles.heroPlaceholderContent}>
           <Text style={[styles.heroPlaceholderTitle, { color: colors.textMuted }]} numberOfLines={1}>
-            {game.title}
+            {displayTitle}
           </Text>
         </View>
       </View>
@@ -601,25 +613,42 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         </Pressable>
 
         <Text style={[styles.topBarTitle, { color: colors.text }]} numberOfLines={1}>
-          {game.title}
+          {displayTitle}
         </Text>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.headerBtn,
-            { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
-            pressed && { borderColor: colors.accent },
-          ]}
-          onPress={() => onOpenConfig(game)}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t('contextMenu.gameConfig')}
-        >
-          <Ionicons name="options-outline" size={16} color={colors.accent} />
-          <Text style={[styles.headerBtnText, { color: colors.accent }]}>
-            {t('common.options')}
-          </Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, minWidth: 44, paddingHorizontal: 10 },
+              pressed && { borderColor: colors.accent },
+            ]}
+            onPress={() => onEdit(game)}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('details.editMetadata')}
+          >
+            <Ionicons name="pencil-outline" size={16} color={colors.accent} />
+          </Pressable>
+          {supportsNxNativeConfig && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.headerBtn,
+                { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
+                pressed && { borderColor: colors.accent },
+              ]}
+              onPress={() => onOpenConfig(game)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('contextMenu.gameConfig')}
+            >
+              <Ionicons name="options-outline" size={16} color={colors.accent} />
+              <Text style={[styles.headerBtnText, { color: colors.accent }]}>
+                {t('common.options')}
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Main Content: Responsive Split Layout in Landscape, Single Column in Portrait */}
@@ -663,7 +692,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
                 </View>
 
                 <Text style={[styles.gameTitleText, { color: colors.text }]} numberOfLines={2}>
-                  {game.title}
+                  {displayTitle}
                 </Text>
                 <Text style={[styles.gamePublisherText, { color: colors.textSecondary }]} numberOfLines={1}>
                   {game.publisher}
@@ -738,7 +767,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
                 )}
               </View>
               <Text style={[styles.gameTitleText, { color: colors.text }]} numberOfLines={2}>
-                {game.title}
+                {displayTitle}
               </Text>
               <Text style={[styles.gamePublisherText, { color: colors.textSecondary }]} numberOfLines={1}>
                 {game.publisher}

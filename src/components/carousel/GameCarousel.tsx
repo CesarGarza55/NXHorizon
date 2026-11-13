@@ -18,7 +18,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata } from '../../types/game';
+import { GameMetadata, getGameTitle } from '../../types/game';
 import { useGameStore } from '../../state/useGameStore';
 import { useFocusStore } from '../../state/useFocusStore';
 import { useTranslation } from 'react-i18next';
@@ -116,7 +116,7 @@ const CarouselTile = React.memo(
         onLongPress={onLongPress}
         delayLongPress={350}
         accessibilityRole="button"
-        accessibilityLabel={game.title}
+        accessibilityLabel={getGameTitle(game)}
         accessibilityState={{ selected: isSelected }}
         style={[
           styles.tileContainer,

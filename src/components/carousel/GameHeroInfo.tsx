@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata } from '../../types/game';
+import { GameMetadata, getGameTitle } from '../../types/game';
 
 interface GameHeroInfoProps {
   game: GameMetadata | null;
@@ -30,35 +30,25 @@ export const GameHeroInfo: React.FC<GameHeroInfoProps> = ({
     onDetails(game);
   };
 
-  const formatPlayTime = (minutes: number) => {
-    if (minutes <= 0) return t('details.neverPlayed');
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h === 0) return t('common.minutes', { count: m });
-    return t('common.hoursAndMinutes', { hours: h, minutes: m });
-  };
+  const title = getGameTitle(game);
 
   return (
     <View style={styles.container}>
       <View style={styles.textContainer}>
         <Text style={styles.genreBadge}>{game.genre.toUpperCase()}</Text>
         <Text style={styles.title} numberOfLines={2}>
-          {game.title}
+          {title}
         </Text>
         <Text style={styles.publisher}>{game.publisher}</Text>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Ionicons name="time-outline" size={14} color="#94A3B8" />
-            <Text style={styles.statText}>{formatPlayTime(game.playTimeMinutes)}</Text>
-          </View>
-          {game.rating ? (
+        {typeof game.rating === 'number' && game.rating > 0 ? (
+          <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Ionicons name="star" size={14} color="#FBBF24" />
               <Text style={styles.statText}>{game.rating.toFixed(1)}</Text>
             </View>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
 
       {/* Action Buttons: Generous hitSlop and clear visual feedback */}

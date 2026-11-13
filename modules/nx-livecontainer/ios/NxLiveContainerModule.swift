@@ -212,7 +212,12 @@ public class NxLiveContainerModule: Module {
       }
     }
 
-    AsyncFunction("writeGameEnvConfig") { (containerFolder: String, config: [String: String], promise: Promise) in
+    AsyncFunction("writeGameEnvConfig") { (containerFolder: String, bundleName: String, config: [String: String], promise: Promise) in
+      guard self.isNxNativeBundle(bundleName) else {
+        promise.reject("ERR_UNSUPPORTED_PACKAGE", "env.txt configuration is only supported for org.nxnative.* packages")
+        return
+      }
+
       DispatchQueue.global(qos: .userInitiated).async { [weak self] in
         guard let self = self else {
           promise.reject("ERR_DEALLOCATED", "Module deallocated")
@@ -308,7 +313,12 @@ public class NxLiveContainerModule: Module {
       }
     }
 
-    AsyncFunction("readGameEnvConfig") { (containerFolder: String, promise: Promise) in
+    AsyncFunction("readGameEnvConfig") { (containerFolder: String, bundleName: String, promise: Promise) in
+      guard self.isNxNativeBundle(bundleName) else {
+        promise.reject("ERR_UNSUPPORTED_PACKAGE", "env.txt configuration is only supported for org.nxnative.* packages")
+        return
+      }
+
       DispatchQueue.global(qos: .userInitiated).async { [weak self] in
         guard let self = self else {
           promise.reject("ERR_DEALLOCATED", "Module deallocated")
@@ -359,6 +369,14 @@ public class NxLiveContainerModule: Module {
     }
   }
 
+  private func isNxNativeBundle(_ bundleName: String) -> Bool {
+    var packageName = bundleName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if packageName.hasSuffix(".app") {
+      packageName.removeLast(4)
+    }
+    return packageName.range(of: #"^org\.nxnative\.[a-z0-9._-]+$"#, options: .regularExpression) != nil
+  }
+
   private func resolveRootFolderUrl() -> (url: URL, shouldStopAccess: Bool)? {
     let fm = FileManager.default
 
@@ -372,9 +390,20 @@ public class NxLiveContainerModule: Module {
       }
     }
 
-    // 2. Auto-detection: If running directly inside LiveContainer, check direct sandbox Documents
+    // 2. LiveContainer preserves its own home path when it launches a guest app.
+    if let liveContainerHome = ProcessInfo.processInfo.environment["LC_HOME_PATH"],
+       !liveContainerHome.isEmpty {
+      let liveContainerDocuments = URL(fileURLWithPath: liveContainerHome, isDirectory: true)
+        .appendingPathComponent("Documents", isDirectory: true)
+      let dataApp = liveContainerDocuments.appendingPathComponent("Data/Application", isDirectory: true)
+      var isDir: ObjCBool = false
+      if fm.fileExists(atPath: dataApp.path, isDirectory: &isDir), isDir.boolValue {
+        return (liveContainerDocuments, false)
+      }
+    }
+
+    // 3. Fallback: check the app's own Documents directory and nearby paths.
     if let docsUrl = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-      // Check if Documents contains Data/Application (or in parent directory)
       let candidates = [
         docsUrl,
         docsUrl.deletingLastPathComponent(),
@@ -390,7 +419,7 @@ public class NxLiveContainerModule: Module {
       }
     }
 
-    // 3. Check saved path if present
+    // 4. Check saved path if present
     if let savedPath = UserDefaults.standard.string(forKey: self.folderPathKey), !savedPath.isEmpty {
       let pathUrl = URL(fileURLWithPath: savedPath)
       var isDir: ObjCBool = false

@@ -6,15 +6,18 @@
 </div>
 
 NX Horizon is an experimental iOS launcher for Nintendo Switch game ports
-compiled for iPhone with [NX2Apple](https://github.com/LNPANDY/NX2Apple). It
-organizes ports in a console-inspired library and hands them off to
-[LiveContainer](https://github.com/LiveContainer/LiveContainer) to launch.
+compiled for iPhone with [NX2Apple](https://github.com/LNPANDY/NX2Apple), as
+well as other iOS apps and games. It organizes entries in a console-inspired
+library and can launch supported LiveContainer links, registered app URL
+schemes, or an app's App Store listing.
 
 NX Horizon is **not** an emulator, a game compiler, or a replacement for
 NX2Apple or LiveContainer. It does not include games or game binaries.
-For game launching, NX Horizon currently requires games to be installed in
-LiveContainer. Installing a game's IPA directly as a standalone iOS app with
-SideStore is not a supported launch path.
+NX2Apple game ports must be installed in LiveContainer to use their launch
+links. Other iOS apps can be registered from the featured list or App Store
+search; NX Horizon cannot detect installed apps or launch them by bundle ID,
+so direct launch depends on an app-supported URL scheme. If that link is
+unavailable, NX Horizon opens the app's App Store listing.
 
 > **Experimental software:** expect incomplete features, compatibility issues,
 > and breaking changes. Use it at your own discretion and do not rely on it as
@@ -50,15 +53,14 @@ The projects have separate responsibilities:
 2. **LiveContainer** imports and runs those standalone game IPAs on the device.
    The game must be installed inside LiveContainer for NX Horizon to launch it.
 3. **NX Horizon** stores the LiveContainer launch URL and metadata for each
-   game, presents the library, and opens that URL when the game is launched.
+   port, and can also keep App Store metadata for ordinary iOS apps.
 
 SideStore can sign and install iOS apps, but it is not the runtime or launch
 bridge for games installed as separate apps. iOS does not provide NX Horizon a
 public API to enumerate installed apps or launch an arbitrary app by bundle
-identifier. NX Horizon can open a URL scheme only when the target app
-explicitly registers and supports it; NX Horizon does not currently support a
-game-specific URL scheme workflow. LiveContainer provides the launch URL
-integration that NX Horizon uses.
+identifier. NX Horizon can open a URL scheme only when the target app explicitly registers
+and supports it. Bundle identifiers alone are not launch links. LiveContainer
+provides the launch URL integration used for NX2Apple ports.
 
 NX Horizon does not build, patch, or distribute game ports. Game compilation
 and compatibility are handled by NX2Apple and the port itself.
@@ -128,7 +130,7 @@ shortcut.
 > **Best Experience:** We strongly recommend installing **NX Horizon directly inside the same LiveContainer instance** where your games are installed, rather than as a separate standalone app.
 
 When installed inside LiveContainer:
-- **Automatic Folder Linking (Zero Configuration):** Since NX Horizon shares the application sandbox directly with LiveContainer, it **automatically detects the `Data/Application` directory** on startup. You do **not** need to manually select or link folders!
+- **Automatic Folder Linking (Zero Configuration):** LiveContainer provides its home path to launched apps through `LC_HOME_PATH`. NX Horizon uses it to detect LiveContainer's `Documents/Data/Application` directory on startup, so you do **not** need to select or link folders manually.
 - **Seamless Launching:** The launcher transitions to your games instantly.
 
 #### Essential LiveContainer Configuration:
@@ -214,11 +216,10 @@ from iOS instead.
 1. Open the import dialog from the dashed **Add game** tile at the far right of
    the home carousel, the orange eShop-style bag button in the home dock, or
    the **+** button in the Library header.
-2. Paste the copied LiveContainer launch URL, or enter a supported title ID or
-   game name.
-3. Review the title and artwork preview. If metadata cannot be matched, enter a
-   title manually.
-4. Save the game. The carousel's dashed tile and the dock button both open this
+2. Select a featured app, search the App Store, or paste a LiveContainer URL.
+3. Review the metadata and artwork preview. For an unrecognized LiveContainer
+   app, enter a title manually.
+4. Save the entry. The carousel's dashed tile and the dock button both open this
    same import dialog.
 
 <p align="center">
@@ -231,9 +232,15 @@ catalog. NLib provides lookup by Title ID; its documented API does not provide
 search by game name. When a URL has no Title ID, NX Horizon searches its
 curated on-device catalog. If the search returns multiple plausible games, it
 asks you to choose instead of silently assigning the first result. A custom
-LiveContainer app can also be added with a manually entered name. Metadata
-lookup requires network access; saved metadata and the launch URL are stored
-locally with the library entry.
+LiveContainer app can also be added with a manually entered name. Ordinary
+iOS apps can be searched through Apple's public App Store lookup API. When an
+imported LiveContainer link's bundle ID matches an App Store result, NX Horizon
+uses the same store metadata. Metadata lookup requires network access; saved
+metadata and launch links are stored locally with the library entry.
+
+Use **Edit app** in the detail view to customize its displayed name,
+description, cover image, and launch URL. Custom themes in **Settings →
+Appearance** support a background image and color palette.
 
 Metadata coverage is incomplete: NX Horizon does not currently recognize
 every Nintendo Switch title automatically. The local catalog and detection
@@ -242,14 +249,13 @@ please open an issue with the launch URL's Title ID (when available), the
 search term, and the result you expected. Do not attach game files or other
 copyrighted content.
 
-The library can also be populated with a title ID or name when a launch URL is
-not available, but a usable LiveContainer URL is required to launch that
-entry. Adding an app's display name or bundle identifier does not enable
-direct launching of a separately installed iOS app.
+An app without a compatible launch URL can still be saved and opened through
+its App Store listing. A bundle identifier does not enable direct launching of
+a separately installed iOS app.
 
 ## Game Details & Launching
 
-Selecting any game from the home carousel or library opens its detailed view. Here you can inspect high-resolution banner artwork, publisher info, release date, categories, playtime tracking, and a synchronized bilingual synopsis (in Spanish or English according to your active console language):
+Selecting any game from the home carousel or library opens its detailed view. Here you can inspect high-resolution banner artwork, publisher info, release date, categories, and a synchronized bilingual synopsis (in Spanish or English according to your active console language):
 
 <p align="center">
   <img src="assets/screenshots/5-game-details.png" alt="Game Details View" width="750" />
@@ -257,7 +263,10 @@ Selecting any game from the home carousel or library opens its detailed view. He
 
 ## Per-Game Performance Settings
 
-Tap the **Configuration** button (gear icon) on any game or in the detail view to fine-tune port-specific performance parameters written directly to its LiveContainer container (`env.txt`):
+Tap **Configuration** on a supported NX Native port (`org.nxnative.*`) to
+fine-tune port-specific performance parameters written to its LiveContainer
+container (`env.txt`). This configuration is not available for ordinary iOS
+apps or games:
 - **Operation Mode:** Toggle between Handheld (720p portable profile) and Docked (1080p profile).
 - **Target Frame Rate:** Limit or uncap frame rate (Auto / 30 FPS / 60 FPS).
 - **Apple Metal Performance HUD:** Display real-time FPS, GPU load, and memory usage overlay.
@@ -271,8 +280,8 @@ Tap the **Configuration** button (gear icon) on any game or in the detail view t
 ## Console Settings & Direct Boot
 
 In the console settings screen, you can manage system-wide launcher preferences:
-- **LiveContainer Status:** Automatically verifies shared container folder access (`Data/Application`).
-- **Direct Boot (`DM_LAUNCHER=0`):** Automatically boots games into fullscreen without the LiveContainer menu appearing.
+- **LiveContainer Status:** Automatically detects access to LiveContainer's game containers (`Data/Application`) when available.
+- **Direct Boot (`DM_LAUNCHER=0`):** Boots supported NX Native packages into fullscreen without the LiveContainer menu appearing.
 - **Controller Diagnostics:** Interactive visual gamepad tester and launcher stick deadzone calibration (prevents menu drift).
 - **Bilingual Interface:** Switch between Spanish and English on the fly.
 

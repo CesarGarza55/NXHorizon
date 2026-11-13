@@ -2,13 +2,19 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GameMetadata, GameLaunchConfig, DEFAULT_GAME_LAUNCH_CONFIG } from '../types/game';
 import { autoDetectAndScrapeGame } from '../services/gameScraper';
+import {
+  lookupIOSAppByBundleId,
+  lookupIOSAppByTrackId,
+  toIOSAppMetadata,
+} from '../services/iosAppCatalog';
+import { isNxNativeBundle } from '../../modules/nx-livecontainer';
 
 interface GameState {
   games: GameMetadata[];
   selectedGameId: string | null;
   searchQuery: string;
   filterMode: 'all' | 'favorites' | 'recent';
-  sortBy: 'name' | 'recent' | 'playtime' | 'rating';
+  sortBy: 'name' | 'recent' | 'rating';
   isLoading: boolean;
   isDirectBootEnabled: boolean;
   globalLaunchConfig: GameLaunchConfig;
@@ -25,16 +31,28 @@ interface GameState {
   removeGame: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
   setSelectedGame: (id: string | null) => void;
-  recordPlaySession: (id: string, additionalMinutes?: number) => Promise<void>;
+  markGameLaunched: (id: string) => Promise<void>;
   setSearchQuery: (query: string) => void;
   setFilterMode: (mode: 'all' | 'favorites' | 'recent') => void;
-  setSortBy: (sort: 'name' | 'recent' | 'playtime' | 'rating') => void;
+  setSortBy: (sort: 'name' | 'recent' | 'rating') => void;
   clearAllGames: () => Promise<void>;
 }
 
 const STORAGE_KEY = '@nx_library_games_collection';
 const DIRECT_BOOT_KEY = '@nx_direct_boot_enabled';
 const GLOBAL_CONFIG_KEY = '@nx_global_launch_config';
+
+function isSameGame(existing: GameMetadata, incoming: GameMetadata): boolean {
+  if (existing.titleId && incoming.titleId) {
+    return existing.titleId.toLowerCase() === incoming.titleId.toLowerCase();
+  }
+  if (existing.appStoreId && incoming.appStoreId && existing.appStoreId === incoming.appStoreId) {
+    return true;
+  }
+  const existingBundle = existing.bundleName?.trim().toLowerCase().replace(/\.app$/, '');
+  const incomingBundle = incoming.bundleName?.trim().toLowerCase().replace(/\.app$/, '');
+  return Boolean(existingBundle && incomingBundle && existingBundle === incomingBundle);
+}
 
 export const useGameStore = create<GameState>((set, get) => ({
   games: [],
@@ -152,7 +170,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   addGame: async (game: GameMetadata) => {
-    const updated = [game, ...get().games.filter((g) => g.titleId !== game.titleId)];
+    const updated = [game, ...get().games.filter((existing) => !isSameGame(existing, game))];
     set({ games: updated, selectedGameId: game.id });
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   },
@@ -185,6 +203,34 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!needsSync) continue;
 
       try {
+        if (!isNxNativeBundle(g.bundleName) && (g.appStoreId || g.bundleName)) {
+          const app = g.appStoreId
+            ? await lookupIOSAppByTrackId(g.appStoreId)
+            : await lookupIOSAppByBundleId(g.bundleName);
+          if (app) {
+            const metadata = toIOSAppMetadata(app, {
+              launchUrl: g.launchUrl,
+              containerFolder: g.containerFolder,
+            });
+            updated[i] = {
+              ...g,
+              title: metadata.title,
+              normalizedTitle: metadata.normalizedTitle,
+              publisher: metadata.publisher,
+              genre: metadata.genre,
+              description: metadata.description,
+              coverUrl: metadata.coverUrl,
+              heroUrl: metadata.heroUrl,
+              screenshots: metadata.screenshots,
+              appStoreId: metadata.appStoreId,
+              appStoreUrl: metadata.appStoreUrl,
+              needsMetadataSync: false,
+            };
+            hasChanges = true;
+          }
+          continue;
+        }
+
         const query = g.titleId || g.title;
         const result = await autoDetectAndScrapeGame(query, g.titleId ? undefined : g.title);
         if (result && result.source === 'nintendo_api' && result.metadata) {
@@ -209,7 +255,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           hasChanges = true;
         }
       } catch (e) {
-        // Silently skip if network unreachable
+        console.warn(`[GameStore] Could not sync metadata for ${g.bundleName || g.title}:`, e);
       }
     }
 
@@ -238,13 +284,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ selectedGameId: id });
   },
 
-  recordPlaySession: async (id: string, additionalMinutes = 15) => {
+  markGameLaunched: async (id: string) => {
     const updated = get().games.map((g) =>
       g.id === id
         ? {
             ...g,
             lastPlayed: new Date().toISOString(),
-            playTimeMinutes: g.playTimeMinutes + additionalMinutes,
           }
         : g
     );

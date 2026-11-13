@@ -31,8 +31,11 @@ import {
   extractContainerFolder,
   mapLaunchConfigToEnv,
   writeGameEnvConfig,
+  isNxNativeBundle,
 } from '../../modules/nx-livecontainer';
 import { ThemeMode, useAppTheme } from '../theme/ThemeProvider';
+import { CustomTheme } from '../theme/ThemeProvider';
+import { ThemeEditorModal } from '../components/common/ThemeEditorModal';
 
 export type SettingsSection =
   | 'support'
@@ -56,7 +59,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   initialSection = 'support',
 }) => {
   const { t } = useTranslation();
-  const { colors, mode: themeMode, setMode: setThemeMode } = useAppTheme();
+  const {
+    colors,
+    mode: themeMode,
+    setMode: setThemeMode,
+    customThemes,
+    activeCustomThemeId,
+    activateCustomTheme,
+    deleteCustomTheme,
+  } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -164,6 +175,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [currentDeadzone, setCurrentDeadzone] = useState(15);
   const [orientationMode, setOrientationMode] = useState<'auto' | 'landscape' | 'portrait'>('auto');
   const [liveContainerStatus, setLiveContainerStatus] = useState(isLiveContainerLinked());
+  const [isThemeEditorVisible, setIsThemeEditorVisible] = useState(false);
+  const [editingTheme, setEditingTheme] = useState<CustomTheme | null>(null);
 
   const handleLinkLiveContainer = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
@@ -174,8 +187,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         // Auto-configure all existing games right away!
         for (const game of games) {
           const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
-          if (folder) {
-            ensureGameDirectBoot(folder).catch(() => { });
+          if (folder && isNxNativeBundle(game.bundleName)) {
+            ensureGameDirectBoot(folder, undefined, game.bundleName).catch((error) => {
+              console.warn('[Settings] Could not configure direct boot:', error);
+            });
           }
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
@@ -193,8 +208,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     if (value && liveContainerStatus.isLinked) {
       for (const game of games) {
         const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
-        if (folder) {
-          ensureGameDirectBoot(folder).catch(() => { });
+        if (folder && isNxNativeBundle(game.bundleName)) {
+          ensureGameDirectBoot(folder, undefined, game.bundleName).catch((error) => {
+            console.warn('[Settings] Could not configure direct boot:', error);
+          });
         }
       }
     }
@@ -219,20 +236,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     let count = 0;
+    let failures = 0;
     const envMap = mapLaunchConfigToEnv(globalLaunchConfig);
     for (const game of games) {
       const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
-      if (folder) {
+      if (folder && isNxNativeBundle(game.bundleName)) {
         try {
-          await writeGameEnvConfig(folder, envMap);
-          count++;
-        } catch { }
+          const result = await writeGameEnvConfig(folder, envMap, game.bundleName);
+          if (result.success) count++;
+          else failures++;
+        } catch (error) {
+          failures++;
+          console.warn(`[Settings] Could not apply defaults to ${game.bundleName}:`, error);
+        }
       }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
     Alert.alert(
-      t('common.success'),
-      t('settings.appliedDefaultsToAll', { count })
+      failures > 0 ? t('common.error') : t('common.success'),
+      t('settings.appliedDefaultsToAll', { count, failed: failures })
     );
   };
 
@@ -244,6 +266,36 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       console.warn('[Settings] Could not save theme preference:', error);
       Alert.alert(t('common.error'), t('settings.themeSaveError'));
     }
+  };
+
+  const handleSelectCustomTheme = async (themeId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    try {
+      await activateCustomTheme(themeId);
+    } catch (error) {
+      console.warn('[Settings] Could not activate custom theme:', error);
+      Alert.alert(t('common.error'), t('settings.themeSaveError'));
+    }
+  };
+
+  const handleDeleteCustomTheme = (theme: CustomTheme) => {
+    Alert.alert(
+      t('settings.themeDelete'),
+      t('settings.themeDeleteConfirm', { name: theme.name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => {
+            deleteCustomTheme(theme.id).catch((error) => {
+              console.warn('[Settings] Could not delete custom theme:', error);
+              Alert.alert(t('common.error'), t('settings.themeSaveError'));
+            });
+          },
+        },
+      ]
+    );
   };
 
   const handleOrientationChange = async (mode: 'auto' | 'landscape' | 'portrait') => {
@@ -287,7 +339,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       case 'support':
         return 2;
       case 'appearance':
-        return 3;
+        return 4 + customThemes.length;
       case 'language':
         return 3;
       case 'orientation':
@@ -303,7 +355,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       default:
         return 0;
     }
-  }, [activeSection, liveContainerStatus.isLinked, updateStatus]);
+  }, [activeSection, customThemes.length, liveContainerStatus.isLinked, updateStatus]);
 
   const executeContentAction = React.useCallback(
     (index: number) => {
@@ -319,6 +371,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         case 'appearance': {
           const modes: ThemeMode[] = ['system', 'light', 'dark'];
           if (modes[index]) handleThemeChange(modes[index]);
+          else if (index === 3) {
+            setEditingTheme(null);
+            setIsThemeEditorVisible(true);
+          } else if (index > 3 && customThemes[index - 4]) {
+            handleSelectCustomTheme(customThemes[index - 4].id);
+          }
           break;
         }
         case 'language': {
@@ -590,6 +648,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       executeContentAction,
       focusedContentIndex,
       setControllerTestActive,
+      customThemes,
     ]
   );
 
@@ -845,6 +904,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   ['dark', 'settings.themeDark'],
                 ] as const).map(([mode, label], index) => {
                   const isFocused = focusZone === 'content' && focusedContentIndex === index;
+                  const isSelected = activeCustomThemeId === null && themeMode === mode;
                   return (
                     <Pressable
                       key={mode}
@@ -859,7 +919,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         handleThemeChange(mode);
                       }}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: themeMode === mode }}
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {isFocused && (
@@ -869,19 +929,123 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           style={[
                             styles.optionLabel,
                             { color: colors.text },
-                            (themeMode === mode || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                          (isSelected || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
                           ]}
                         >
                           {t(label)}
                         </Text>
                       </View>
-                      {themeMode === mode && (
+                      {isSelected && (
                         <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
                       )}
                     </Pressable>
                   );
                 })}
+                <Pressable
+                  style={[
+                    styles.optionRow,
+                    styles.optionRowBorder,
+                    { borderBottomColor: colors.border },
+                    focusZone === 'content' && focusedContentIndex === 3 && [
+                      styles.focusedOptionRow,
+                      { backgroundColor: colors.accentSurface, borderColor: colors.accent },
+                    ],
+                  ]}
+                  onPress={() => {
+                    setFocusedContentIndex(3);
+                    setEditingTheme(null);
+                    setIsThemeEditorVisible(true);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="color-palette-outline" size={19} color={colors.accent} />
+                    <Text style={[styles.optionLabel, { color: colors.text }]}>
+                      {t('settings.createTheme')}
+                    </Text>
+                  </View>
+                  <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+                </Pressable>
               </View>
+
+              {customThemes.length > 0 && (
+                <>
+                  <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 22 }]}>
+                    {t('settings.customThemes')}
+                  </Text>
+                  <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    {customThemes.map((theme, index) => {
+                      const focusIndex = index + 4;
+                      const isFocused = focusZone === 'content' && focusedContentIndex === focusIndex;
+                      const isSelected = activeCustomThemeId === theme.id;
+                      return (
+                        <View
+                          key={theme.id}
+                          style={[
+                            styles.optionRow,
+                            index < customThemes.length - 1 && styles.optionRowBorder,
+                            { borderBottomColor: colors.border },
+                            isFocused && [
+                              styles.focusedOptionRow,
+                              { backgroundColor: colors.accentSurface, borderColor: colors.accent },
+                            ],
+                          ]}
+                        >
+                          <Pressable
+                            style={{ flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                            onPress={() => {
+                              setFocusedContentIndex(focusIndex);
+                              handleSelectCustomTheme(theme.id);
+                            }}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: isSelected }}
+                          >
+                            <View
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 11,
+                                backgroundColor: theme.colors.accent,
+                                borderWidth: 1,
+                                borderColor: theme.colors.border,
+                              }}
+                            />
+                            <Text
+                              style={[
+                                styles.optionLabel,
+                                { color: isSelected || isFocused ? colors.accentStrong : colors.text },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {theme.name}
+                            </Text>
+                            {isSelected && <Ionicons name="checkmark-circle" size={18} color={colors.accent} />}
+                          </Pressable>
+                          <Pressable
+                            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                            onPress={() => {
+                              setEditingTheme(theme);
+                              setIsThemeEditorVisible(true);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('settings.editTheme')}
+                          >
+                            <Ionicons name="pencil-outline" size={17} color={colors.accent} />
+                          </Pressable>
+                          <Pressable
+                            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                            onPress={() => handleDeleteCustomTheme(theme)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('settings.themeDelete')}
+                          >
+                            <Ionicons name="trash-outline" size={17} color={colors.destructive} />
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
             </View>
           )}
 
@@ -1818,6 +1982,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           )}
         </ScrollView>
       </View>
+      <ThemeEditorModal
+        visible={isThemeEditorVisible}
+        theme={editingTheme}
+        onClose={() => {
+          setIsThemeEditorVisible(false);
+          setEditingTheme(null);
+        }}
+      />
     </View>
   );
 };

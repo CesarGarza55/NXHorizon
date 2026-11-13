@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata } from '../../types/game';
+import { GameMetadata, getGameTitle } from '../../types/game';
 import { useGameStore } from '../../state/useGameStore';
 import { useFocusStore } from '../../state/useFocusStore';
 import { useAppTheme } from '../../theme/ThemeProvider';
@@ -58,7 +58,7 @@ export const GameLibraryGrid: React.FC<GameLibraryGridProps> = ({
   const filteredGames = games.filter((game) => {
     const matchesSearch =
       !searchQuery.trim() ||
-      game.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getGameTitle(game).toLowerCase().includes(searchQuery.toLowerCase()) ||
       game.publisher.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (game.titleId && game.titleId.toLowerCase().includes(searchQuery.toLowerCase()));
 

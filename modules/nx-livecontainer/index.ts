@@ -95,6 +95,11 @@ export function isLiveContainerLinked(): LinkStatus {
   }
 }
 
+export function isNxNativeBundle(bundleName?: string): boolean {
+  const normalized = bundleName?.trim().toLowerCase().replace(/\.app$/, '');
+  return Boolean(normalized && /^org\.nxnative\.[a-z0-9._-]+$/.test(normalized));
+}
+
 export function unlinkLiveContainer(): boolean {
   if (!NxLiveContainer?.unlinkFolder) return false;
   try {
@@ -107,13 +112,17 @@ export function unlinkLiveContainer(): boolean {
 
 export async function writeGameEnvConfig(
   containerFolder: string,
-  config: Record<string, string> = {}
+  config: Record<string, string> = {},
+  bundleName?: string
 ): Promise<WriteConfigResult> {
+  if (!isNxNativeBundle(bundleName)) {
+    return { success: false };
+  }
   if (!NxLiveContainer?.writeGameEnvConfig) {
     return { success: false };
   }
   try {
-    return await NxLiveContainer.writeGameEnvConfig(containerFolder, config);
+    return await NxLiveContainer.writeGameEnvConfig(containerFolder, bundleName, config);
   } catch (error) {
     console.warn(`[NxLiveContainer] writeGameEnvConfig error for ${containerFolder}:`, error);
     return { success: false };
@@ -121,13 +130,17 @@ export async function writeGameEnvConfig(
 }
 
 export async function readGameEnvConfig(
-  containerFolder: string
+  containerFolder: string,
+  bundleName?: string
 ): Promise<Record<string, string>> {
+  if (!isNxNativeBundle(bundleName)) {
+    return {};
+  }
   if (!NxLiveContainer?.readGameEnvConfig) {
     return {};
   }
   try {
-    return await NxLiveContainer.readGameEnvConfig(containerFolder);
+    return await NxLiveContainer.readGameEnvConfig(containerFolder, bundleName);
   } catch (error) {
     console.warn(`[NxLiveContainer] readGameEnvConfig error for ${containerFolder}:`, error);
     return {};
@@ -228,10 +241,11 @@ export function parseEnvToLaunchConfig(env: Record<string, string>): Partial<Gam
  */
 export async function ensureGameDirectBoot(
   target?: string,
-  extraConfig?: Record<string, string>
+  extraConfig?: Record<string, string>,
+  bundleName?: string
 ): Promise<boolean> {
   const containerFolder = extractContainerFolder(target);
-  if (!containerFolder) return false;
+  if (!containerFolder || !isNxNativeBundle(bundleName)) return false;
   const status = isLiveContainerLinked();
   if (!status.isLinked) return false;
 
@@ -240,7 +254,7 @@ export async function ensureGameDirectBoot(
     DM_FULLSCREEN: '1',
     DM_SAVED_CHOICES: '1',
     ...(extraConfig || {})
-  });
+  }, bundleName);
 
   return result.success;
 }

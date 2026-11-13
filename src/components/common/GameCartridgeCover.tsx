@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, StyleProp, ViewStyle, ImageStyle } from 'react-native';
 import { Image, ImageContentFit } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { GameMetadata } from '../../types/game';
+import { GameMetadata, getGameCoverUrl, getGameTitle } from '../../types/game';
 import { useAppTheme } from '../../theme/ThemeProvider';
 
 interface GameCartridgeCoverProps {
-  game: Pick<GameMetadata, 'id' | 'title' | 'coverUrl' | 'needsMetadataSync'>;
+  game: Pick<GameMetadata, 'id' | 'title' | 'coverUrl' | 'needsMetadataSync'> &
+    Partial<Pick<GameMetadata, 'customTitle' | 'customCoverUrl'>>;
   style?: StyleProp<ViewStyle | ImageStyle>;
   contentFit?: ImageContentFit;
   showSyncBadge?: boolean;
@@ -22,14 +23,20 @@ export const GameCartridgeCover: React.FC<GameCartridgeCoverProps> = ({
 }) => {
   const { colors } = useAppTheme();
   const [imageError, setImageError] = useState(false);
+  const coverUrl = getGameCoverUrl(game);
+  const title = getGameTitle(game);
 
-  const hasValidCover = Boolean(game.coverUrl && !imageError && game.coverUrl.trim().length > 0);
+  useEffect(() => {
+    setImageError(false);
+  }, [coverUrl]);
+
+  const hasValidCover = Boolean(coverUrl && !imageError && coverUrl.trim().length > 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, style]}>
       {hasValidCover ? (
         <Image
-          source={{ uri: game.coverUrl }}
+          source={{ uri: coverUrl }}
           style={StyleSheet.absoluteFill}
           contentFit={contentFit}
           transition={200}
@@ -45,7 +52,7 @@ export const GameCartridgeCover: React.FC<GameCartridgeCoverProps> = ({
               <Ionicons name="game-controller-outline" size={iconSize} color={colors.accent} />
             </View>
             <Text style={[styles.placeholderTitle, { color: colors.text }]} numberOfLines={2}>
-              {game.title}
+              {title}
             </Text>
           </View>
         </View>

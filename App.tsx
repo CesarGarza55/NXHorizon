@@ -34,8 +34,14 @@ import { GameDetailScreen } from './src/screens/GameDetailScreen';
 import { GameContextMenu } from './src/components/common/GameContextMenu';
 import { GameConfigModal } from './src/components/common/GameConfigModal';
 import { ImportGameModal } from './src/components/common/ImportGameModal';
+import { EditAppModal } from './src/components/common/EditAppModal';
 import { OnboardingModal } from './src/components/common/OnboardingModal';
 import { autoDetectAndScrapeGame } from './src/services/gameScraper';
+import {
+  lookupIOSAppByBundleId,
+  lookupIOSAppByTrackId,
+  toIOSAppMetadata,
+} from './src/services/iosAppCatalog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ensureGameDirectBoot,
@@ -43,6 +49,7 @@ import {
   openLiveContainerGame,
   mapLaunchConfigToEnv,
   addNetworkListener,
+  isNxNativeBundle,
 } from './modules/nx-livecontainer';
 import { ThemeProvider, useAppTheme } from './src/theme/ThemeProvider';
 
@@ -64,7 +71,7 @@ function MainNavigator() {
     updateGameMetadata,
     syncPendingGamesSilently,
     removeGame,
-    recordPlaySession,
+    markGameLaunched,
     isDirectBootEnabled,
     globalLaunchConfig,
   } = useGameStore();
@@ -81,6 +88,7 @@ function MainNavigator() {
 
   const [contextMenuGame, setContextMenuGame] = useState<GameMetadata | null>(null);
   const [configModalGame, setConfigModalGame] = useState<GameMetadata | null>(null);
+  const [editModalGame, setEditModalGame] = useState<GameMetadata | null>(null);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [isOnboardingVisible, setIsOnboardingVisible] = useState(false);
   const [isOnboardingResolved, setIsOnboardingResolved] = useState(false);
@@ -187,10 +195,14 @@ function MainNavigator() {
 
   const handleGameLaunch = async (game: GameMetadata) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-    recordPlaySession(game.id, 20);
+    const markAsLaunched = () => {
+      markGameLaunched(game.id).catch((error) => {
+        console.warn('[App] Could not update last-played date:', error);
+      });
+    };
 
     if (game.launchUrl) {
-      if (isDirectBootEnabled) {
+      if (isDirectBootEnabled && isNxNativeBundle(game.bundleName)) {
         const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
         if (folder) {
           try {
@@ -199,7 +211,7 @@ function MainNavigator() {
               ...(game.launchConfig || {}),
             };
             const envMap = mapLaunchConfigToEnv(mergedConfig);
-            await ensureGameDirectBoot(folder, envMap);
+            await ensureGameDirectBoot(folder, envMap, game.bundleName);
             await new Promise((resolve) => setTimeout(resolve, 60));
           } catch (err) {
             console.warn('[LiveContainer] Could not pre-write env.txt:', err);
@@ -207,33 +219,74 @@ function MainNavigator() {
         }
       }
 
-      // 1. Try native silent launch via LSApplicationWorkspace to avoid SpringBoard alert
-      const openedNatively = await openLiveContainerGame(game.launchUrl);
-      if (openedNatively) return;
-
-      // 2. Fallback to standard openURL
       try {
+        if (/^livecontainer:/i.test(game.launchUrl)) {
+          const openedNatively = await openLiveContainerGame(game.launchUrl);
+          if (openedNatively) {
+            markAsLaunched();
+            return;
+          }
+        }
         await Linking.openURL(game.launchUrl);
+        markAsLaunched();
         return;
       } catch (e) {
-        console.warn('Error launching LiveContainer URL directly:', e);
-        Alert.alert(
-          t('common.error'),
-          t('details.liveContainerLaunchError', { launchUrl: game.launchUrl })
-        );
-        return;
+        console.warn('[App] Could not open app launch link:', e);
+        if (!game.appStoreUrl) {
+          Alert.alert(
+            t('common.error'),
+            /^livecontainer:/i.test(game.launchUrl)
+              ? t('details.liveContainerLaunchError', { launchUrl: game.launchUrl })
+              : t('details.launchGameError')
+          );
+          return;
+        }
       }
     }
 
-    Alert.alert(
-      t('common.play'),
-      `${t('details.launchGame')}: ${game.title}\n\n[${t('details.titleId')}: ${game.titleId || 'N/A'}]`
-    );
+    if (game.appStoreUrl) {
+      try {
+        await Linking.openURL(game.appStoreUrl);
+      } catch (error) {
+        console.warn('[App] Could not open App Store listing:', error);
+        Alert.alert(t('common.error'), t('details.launchGameError'));
+      }
+      return;
+    }
+
+    Alert.alert(t('common.error'), t('details.launchGameError'));
   };
 
   const handleRefreshMetadata = async (game: GameMetadata) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      if (!isNxNativeBundle(game.bundleName) && (game.appStoreId || game.bundleName)) {
+        const app = game.appStoreId
+          ? await lookupIOSAppByTrackId(game.appStoreId)
+          : await lookupIOSAppByBundleId(game.bundleName);
+        if (!app) throw new Error(`No App Store result for ${game.bundleName || game.appStoreId}`);
+        const metadata = toIOSAppMetadata(app, {
+          launchUrl: game.launchUrl,
+          containerFolder: game.containerFolder,
+        });
+        await updateGameMetadata(game.id, {
+          title: metadata.title,
+          normalizedTitle: metadata.normalizedTitle,
+          publisher: metadata.publisher,
+          genre: metadata.genre,
+          description: metadata.description,
+          coverUrl: metadata.coverUrl,
+          heroUrl: metadata.heroUrl,
+          screenshots: metadata.screenshots,
+          appStoreId: metadata.appStoreId,
+          appStoreUrl: metadata.appStoreUrl,
+          needsMetadataSync: false,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert(t('common.success'), t('import.autoDetectSuccess'));
+        return;
+      }
+
       const scrapeQuery = game.titleId || game.title;
       const result = await autoDetectAndScrapeGame(scrapeQuery, game.titleId ? undefined : game.title);
       if (result.metadata) {
@@ -252,7 +305,7 @@ function MainNavigator() {
       }
     } catch (e) {
       console.warn('Error refreshing metadata:', e);
-      Alert.alert(t('common.error'), t('import.importFailed'));
+      Alert.alert(t('common.error'), t('details.metadataRefreshError'));
     }
   };
 
@@ -424,7 +477,7 @@ function MainNavigator() {
   const handleGamepadOptions = () => {
     if (configModalGame) return;
     if (activeScreen === 'details' && selectedGame) {
-      setConfigModalGame(selectedGame);
+      if (isNxNativeBundle(selectedGame.bundleName)) setConfigModalGame(selectedGame);
     } else if (activeScreen === 'home' && selectedGame) {
       setActiveScreen('details');
     } else if (activeScreen === 'library' && selectedGame) {
@@ -551,7 +604,10 @@ function MainNavigator() {
             game={selectedGame}
             onBack={() => setActiveScreen('home')}
             onLaunch={handleGameLaunch}
-            onOpenConfig={(g) => setConfigModalGame(g)}
+            onOpenConfig={(g) => {
+              if (isNxNativeBundle(g.bundleName)) setConfigModalGame(g);
+            }}
+            onEdit={(g) => setEditModalGame(g)}
             onRefreshMetadata={handleRefreshMetadata}
           />
         )}
@@ -577,7 +633,7 @@ function MainNavigator() {
           selectedGame
             ? () => {
                 if (activeScreen === 'details') {
-                  setConfigModalGame(selectedGame);
+                  if (isNxNativeBundle(selectedGame.bundleName)) setConfigModalGame(selectedGame);
                 } else {
                   setActiveScreen('details');
                 }
@@ -603,7 +659,11 @@ function MainNavigator() {
         onPlay={handleGameLaunch}
         onOpenConfig={(g) => {
           setContextMenuGame(null);
-          setConfigModalGame(g);
+          if (isNxNativeBundle(g.bundleName)) setConfigModalGame(g);
+        }}
+        onEdit={(g) => {
+          setContextMenuGame(null);
+          setEditModalGame(g);
         }}
         onRefreshMetadata={handleRefreshMetadata}
         onDelete={(g) => removeGame(g.id)}
@@ -615,6 +675,11 @@ function MainNavigator() {
         visible={configModalGame !== null}
         onClose={() => setConfigModalGame(null)}
         onPlay={handleGameLaunch}
+      />
+      <EditAppModal
+        game={editModalGame}
+        visible={editModalGame !== null}
+        onClose={() => setEditModalGame(null)}
       />
 
       {/* Add Game Modal with LiveContainer link support & guide */}

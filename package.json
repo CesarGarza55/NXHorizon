@@ -1,6 +1,6 @@
 {
   "name": "nx-horizon",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "NX Horizon - Nintendo Switch Horizon OS Frontend",
   "main": "index.ts",
   "dependencies": {

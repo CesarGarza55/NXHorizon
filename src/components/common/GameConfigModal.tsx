@@ -20,6 +20,8 @@ import {
   GameMetadata,
   GameLaunchConfig,
   DEFAULT_GAME_LAUNCH_CONFIG,
+  getGameCoverUrl,
+  getGameTitle,
 } from '../../types/game';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { useGameStore } from '../../state/useGameStore';
@@ -29,6 +31,7 @@ import {
   mapLaunchConfigToEnv,
   parseEnvToLaunchConfig,
   extractContainerFolder,
+  isNxNativeBundle,
 } from '../../../modules/nx-livecontainer';
 import { useGamepad } from '../../hooks/useGamepad';
 
@@ -73,6 +76,8 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
 
   const [config, setConfig] = useState<GameLaunchConfig>(DEFAULT_GAME_LAUNCH_CONFIG);
   const [isSaving, setIsSaving] = useState(false);
+  const displayTitle = getGameTitle(game);
+  const coverUrl = getGameCoverUrl(game);
 
   // Controller focus row:
   // 0 = Mode, 1 = FPS, 2 = Scale, 3 = Upscaler, 4 = Metal HUD, 5 = Gyro, 6 = Language, 7 = Footer Buttons
@@ -84,7 +89,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
 
   // Sync initial config whenever modal opens or game changes
   useEffect(() => {
-    if (!visible || !game) return;
+    if (!visible || !game || !isNxNativeBundle(game.bundleName)) return;
 
     setFocusedRow(0);
     setFocusedFooterBtn(onPlay ? 3 : 2);
@@ -97,7 +102,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
 
     const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
     if (folder) {
-      readGameEnvConfig(folder).then((env) => {
+      readGameEnvConfig(folder, game.bundleName).then((env) => {
         if (env && Object.keys(env).length > 0) {
           const parsed = parseEnvToLaunchConfig(env);
           setConfig((prev) => ({
@@ -111,7 +116,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
 
   const handleSave = useCallback(
     async (bootAfterSave = false) => {
-      if (!game) return;
+      if (!game || !isNxNativeBundle(game.bundleName)) return;
       setIsSaving(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
@@ -121,7 +126,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
         const folder = game.containerFolder || extractContainerFolder(game.launchUrl);
         if (folder) {
           const envMap = mapLaunchConfigToEnv(config);
-          await writeGameEnvConfig(folder, envMap);
+          await writeGameEnvConfig(folder, envMap, game.bundleName);
         }
 
         setIsSaving(false);
@@ -253,7 +258,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
     },
   });
 
-  if (!visible || !game) return null;
+  if (!visible || !game || !isNxNativeBundle(game.bundleName)) return null;
 
   return (
     <Modal
@@ -294,9 +299,9 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <View style={styles.headerLeft}>
-              {game.coverUrl ? (
+              {coverUrl ? (
                 <Image
-                  source={{ uri: game.coverUrl }}
+                  source={{ uri: coverUrl }}
                   style={[styles.headerThumb, { borderColor: colors.border }]}
                   contentFit="cover"
                   cachePolicy="memory-disk"
@@ -308,7 +313,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
               )}
               <View style={styles.headerInfo}>
                 <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-                  {game.title}
+                  {displayTitle}
                 </Text>
                 <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
                   {t('gameConfig.subtitle')}

@@ -16,20 +16,30 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { autoDetectAndScrapeGame, scrapeGameByTitleId, ScrapeResult } from '../../services/gameScraper';
 import { searchCatalogCandidates, GameCatalogEntry } from '../../services/gameDatabase';
 import { useGameStore } from '../../state/useGameStore';
-import { ensureGameDirectBoot } from '../../../modules/nx-livecontainer';
+import { ensureGameDirectBoot, isNxNativeBundle } from '../../../modules/nx-livecontainer';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { GameCartridgeCover } from './GameCartridgeCover';
 import { GameMetadata } from '../../types/game';
+import {
+  FEATURED_IOS_APPS,
+  IOSAppCatalogEntry,
+  lookupIOSAppByBundleId,
+  searchIOSApps,
+  toIOSAppMetadata,
+} from '../../services/iosAppCatalog';
 
 interface ImportGameModalProps {
   visible: boolean;
   onClose: () => void;
 }
+
+type ImportMode = 'appStore' | 'liveContainer';
 
 export const ImportGameModal: React.FC<ImportGameModalProps> = ({
   visible,
@@ -43,10 +53,12 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
   const isLandscape = width > height;
 
   const [inputUrl, setInputUrl] = useState('');
+  const [importMode, setImportMode] = useState<ImportMode>('appStore');
   const [manualName, setManualName] = useState('');
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingError, setProcessingError] = useState(false);
   const [stepMessage, setStepMessage] = useState('');
   const [previewResult, setPreviewResult] = useState<ScrapeResult | null>(null);
 
@@ -54,6 +66,80 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
   const [candidates, setCandidates] = useState<GameCatalogEntry[]>([]);
   const [showCandidatePicker, setShowCandidatePicker] = useState(false);
   const [isManualOffline, setIsManualOffline] = useState(false);
+  const [appSearchQuery, setAppSearchQuery] = useState('');
+  const [appSearchResults, setAppSearchResults] = useState<IOSAppCatalogEntry[]>([]);
+  const [isAppSearchLoading, setIsAppSearchLoading] = useState(false);
+  const [appSearchError, setAppSearchError] = useState(false);
+  const featuredAppMatches = FEATURED_IOS_APPS
+    .filter((app) =>
+      !appSearchQuery.trim() ||
+      app.name.toLowerCase().includes(appSearchQuery.trim().toLowerCase())
+    )
+    .slice(0, 6);
+
+  const searchAppCatalog = async (query = appSearchQuery) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+    setAppSearchQuery(trimmedQuery);
+    setAppSearchError(false);
+    setIsAppSearchLoading(true);
+    try {
+      const results = await searchIOSApps(trimmedQuery);
+      setAppSearchResults(results);
+    } catch (error) {
+      console.warn('[AddGameModal] App Store search failed:', error);
+      setAppSearchResults([]);
+      setAppSearchError(true);
+    } finally {
+      setIsAppSearchLoading(false);
+    }
+  };
+
+  const handleSelectIOSApp = (app: IOSAppCatalogEntry, launchUrl?: string) => {
+    const preparedApp = FEATURED_IOS_APPS.find(
+      (featured) =>
+        (featured.bundleId && featured.bundleId.toLowerCase() === app.bundleId?.toLowerCase()) ||
+        featured.name.trim().toLowerCase() === app.name.trim().toLowerCase()
+    );
+    const metadata = toIOSAppMetadata(app, { launchUrl: launchUrl || preparedApp?.launchUrl });
+    setPreviewResult({
+      detectedCleanName: app.name,
+      metadata,
+      source: 'custom',
+      needsManualName: false,
+    });
+    setAppSearchQuery('');
+    setAppSearchResults([]);
+    setAppSearchError(false);
+    setShowNamePrompt(false);
+    setShowCandidatePicker(false);
+    setIsManualOffline(false);
+    setImportMode('appStore');
+  };
+
+  const handleSelectFeaturedApp = async (name: string, bundleId?: string, launchUrl?: string) => {
+    setImportMode('appStore');
+    setAppSearchQuery(name);
+    setAppSearchResults([]);
+    setAppSearchError(false);
+    setIsAppSearchLoading(true);
+    try {
+      if (bundleId) {
+        const app = await lookupIOSAppByBundleId(bundleId);
+        if (app) {
+          handleSelectIOSApp(app, launchUrl);
+          return;
+        }
+      }
+      const results = await searchIOSApps(name);
+      setAppSearchResults(results);
+    } catch (error) {
+      console.warn('[AddGameModal] Featured App Store lookup failed:', error);
+      setAppSearchError(true);
+    } finally {
+      setIsAppSearchLoading(false);
+    }
+  };
 
   const handlePasteClipboard = async () => {
     try {
@@ -70,7 +156,9 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
 
   const processUrl = async (url: string, nameOverride?: string) => {
     if (!url.trim()) return;
+    setImportMode('liveContainer');
     setIsProcessing(true);
+    setProcessingError(false);
     setPreviewResult(null);
     setShowCandidatePicker(false);
 
@@ -83,6 +171,29 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
       }, 250);
 
       const scrapeResult = await autoDetectAndScrapeGame(url, nameOverride);
+
+      if (scrapeResult.metadata.bundleName && !scrapeResult.metadata.titleId) {
+        try {
+          const app = await lookupIOSAppByBundleId(scrapeResult.metadata.bundleName);
+          if (app) {
+            const appMetadata = toIOSAppMetadata(app, {
+              launchUrl: scrapeResult.metadata.launchUrl,
+              containerFolder: scrapeResult.metadata.containerFolder,
+            });
+            scrapeResult.metadata = {
+              ...appMetadata,
+              id: scrapeResult.metadata.id,
+              titleId: scrapeResult.metadata.titleId,
+              launchConfig: scrapeResult.metadata.launchConfig,
+            };
+            scrapeResult.detectedCleanName = appMetadata.title;
+            scrapeResult.needsManualName = false;
+            scrapeResult.isOfflineFallback = false;
+          }
+        } catch (error) {
+          console.warn('[AddGameModal] Could not enrich LiveContainer app metadata:', error);
+        }
+      }
 
       if (scrapeResult.candidates && scrapeResult.candidates.length > 0) {
         setCandidates(scrapeResult.candidates);
@@ -108,6 +219,7 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
     } catch (err) {
       console.error('[AddGameModal] Error:', err);
       setStepMessage(t('import.importFailed'));
+      setProcessingError(true);
     } finally {
       setIsProcessing(false);
     }
@@ -117,6 +229,7 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
   const handleSelectCandidate = async (candidate: GameCatalogEntry) => {
     try {
       setIsProcessing(true);
+      setProcessingError(false);
       setStepMessage(t('import.fetchingArt'));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
@@ -140,6 +253,7 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
       console.warn('[AddGameModal] Candidate selection error:', err);
+      setProcessingError(true);
     } finally {
       setIsProcessing(false);
     }
@@ -198,8 +312,14 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
   const handleConfirmAdd = async () => {
     if (!previewResult) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-    if (previewResult.metadata.containerFolder) {
-      ensureGameDirectBoot(previewResult.metadata.containerFolder).catch(() => {});
+    if (previewResult.metadata.containerFolder && isNxNativeBundle(previewResult.metadata.bundleName)) {
+      ensureGameDirectBoot(
+        previewResult.metadata.containerFolder,
+        undefined,
+        previewResult.metadata.bundleName
+      ).catch((error) => {
+        console.warn('[ImportGameModal] Could not configure NX Native game:', error);
+      });
     }
     await addGame(previewResult.metadata);
     handleReset();
@@ -208,15 +328,21 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
 
   const handleReset = () => {
     setInputUrl('');
+    setImportMode('appStore');
     setManualName('');
     setShowNamePrompt(false);
     setShowGuide(false);
     setIsProcessing(false);
+    setProcessingError(false);
     setStepMessage('');
     setPreviewResult(null);
     setCandidates([]);
     setShowCandidatePicker(false);
     setIsManualOffline(false);
+    setAppSearchQuery('');
+    setAppSearchResults([]);
+    setIsAppSearchLoading(false);
+    setAppSearchError(false);
   };
 
   return (
@@ -277,7 +403,9 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
               {/* Header */}
               <View style={[styles.header, { borderBottomColor: colors.border }]}>
                 <View style={styles.headerTitleRow}>
-                  <Ionicons name="link" size={22} color={colors.accent} />
+                  <View style={[styles.headerIcon, { backgroundColor: colors.accentSurface }]}>
+                    <Ionicons name="add" size={20} color={colors.accent} />
+                  </View>
                   <Text style={[styles.title, { color: colors.text }]}>{t('import.title')}</Text>
                 </View>
                 <Pressable
@@ -293,44 +421,235 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
 
               <View
                 style={[
-                  styles.contentColumns,
-                  isLandscape && styles.contentColumnsLandscape,
+                  styles.modePicker,
+                  { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
                 ]}
+                accessibilityRole="tablist"
               >
-                <View style={isLandscape ? styles.columnLandscape : undefined}>
-                  {/* Guide Accordion Button */}
-                  <Pressable
-                    style={[styles.guideToggle, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}
-                    onPress={() => setShowGuide(!showGuide)}
-                  >
-                    <Ionicons name="help-circle-outline" size={18} color={colors.accent} />
-                    <Text style={[styles.guideToggleText, { color: colors.accentStrong }]}>{t('import.guideTitle')}</Text>
-                    <Ionicons
-                      name={showGuide ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={colors.textMuted}
-                    />
-                  </Pressable>
+                {([
+                  ['appStore', 'apps-outline', 'import.sourceAppStore'],
+                  ['liveContainer', 'link-outline', 'import.sourceLiveContainer'],
+                ] as const).map(([mode, icon, label]) => {
+                  const selected = importMode === mode;
+                  return (
+                    <Pressable
+                      key={mode}
+                      style={[
+                        styles.modeOption,
+                        selected && { backgroundColor: colors.surface },
+                      ]}
+                      onPress={() => setImportMode(mode)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected }}
+                    >
+                      <Ionicons
+                        name={icon}
+                        size={17}
+                        color={selected ? colors.accent : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.modeOptionText,
+                          { color: selected ? colors.text : colors.textSecondary },
+                          selected && styles.modeOptionTextSelected,
+                        ]}
+                      >
+                        {t(label)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-                  {/* Guide Steps */}
-                  {showGuide && (
-                    <View style={[styles.guideBox, { backgroundColor: colors.surfaceSecondary, borderLeftColor: colors.accent }]}>
-                      <View style={[styles.requirementCard, { backgroundColor: colors.accentSurface, borderColor: colors.accent }]}>
-                        <Ionicons name="information-circle" size={16} color={colors.accent} />
-                        <Text style={[styles.requirementText, { color: colors.text }]}>
-                          {t('import.nx2appleRequirementText')}
+              <View style={styles.contentStack}>
+                {importMode === 'appStore' && !previewResult && (
+                  <View>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>
+                      {t('import.appCatalogTitle')}
+                    </Text>
+                    <Text style={[styles.guideStepText, { color: colors.textSecondary, marginBottom: 12 }]}>
+                      {t('import.appCatalogDescription')}
+                    </Text>
+
+                    <View style={styles.inputRow}>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          {
+                            backgroundColor: colors.surfaceSecondary,
+                            color: colors.text,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        placeholder={t('import.appCatalogPlaceholder')}
+                        placeholderTextColor={colors.textMuted}
+                        value={appSearchQuery}
+                        onChangeText={(value) => {
+                          setAppSearchQuery(value);
+                          setAppSearchResults([]);
+                          setAppSearchError(false);
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                        onSubmitEditing={() => searchAppCatalog()}
+                        accessibilityLabel={t('import.searchAppStore')}
+                      />
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.searchButton,
+                          { backgroundColor: colors.accent },
+                          pressed && styles.searchButtonPressed,
+                          (!appSearchQuery.trim() || isAppSearchLoading) && styles.searchButtonDisabled,
+                        ]}
+                        onPress={() => searchAppCatalog()}
+                        disabled={!appSearchQuery.trim() || isAppSearchLoading}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('import.searchAppStore')}
+                      >
+                        {isAppSearchLoading ? (
+                          <ActivityIndicator size="small" color={colors.surface} />
+                        ) : (
+                          <Ionicons name="search" size={20} color={colors.surface} />
+                        )}
+                      </Pressable>
+                    </View>
+
+                    {appSearchError && (
+                      <View style={[styles.inlineNotice, { borderColor: colors.destructive }]}>
+                        <Ionicons name="alert-circle-outline" size={18} color={colors.destructive} />
+                        <Text
+                          style={[
+                            styles.guideStepText,
+                            styles.inlineNoticeText,
+                            { color: colors.destructive },
+                          ]}
+                        >
+                          {t('import.appCatalogError')}
                         </Text>
                       </View>
-                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>{t('import.guideStep1')}</Text>
-                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>{t('import.guideStep2')}</Text>
-                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>{t('import.guideStep3')}</Text>
-                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>{t('import.guideStep4')}</Text>
-                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>{t('import.guideStep5')}</Text>
-                    </View>
-                  )}
-                </View>
+                    )}
 
-                <View style={isLandscape ? styles.columnLandscape : undefined}>
+                    {featuredAppMatches.length > 0 && appSearchResults.length === 0 && (
+                      <View style={styles.resultsSection}>
+                        <Text style={[styles.sectionHeading, { color: colors.text }]}>
+                          {t('import.preparedSuggestions')}
+                        </Text>
+                        {featuredAppMatches.map((app) => (
+                          <Pressable
+                            key={`${app.name}-${app.bundleId || ''}`}
+                            style={({ pressed }) => [
+                              styles.candidateItem,
+                              {
+                                backgroundColor: colors.surfaceSecondary,
+                                borderColor: colors.border,
+                              },
+                              pressed && { borderColor: colors.accent },
+                            ]}
+                            onPress={() => handleSelectFeaturedApp(app.name, app.bundleId, app.launchUrl)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('import.searchFeaturedApp', { name: app.name })}
+                          >
+                            <View
+                              style={[
+                                styles.candidateIconBadge,
+                                { backgroundColor: colors.accentSurface },
+                              ]}
+                            >
+                              <Ionicons name="apps-outline" size={19} color={colors.accent} />
+                            </View>
+                            <View style={styles.candidateDetails}>
+                              <Text
+                                style={[styles.candidateTitle, { color: colors.text }]}
+                                numberOfLines={1}
+                              >
+                                {app.name}
+                              </Text>
+                              <Text style={[styles.candidateSub, { color: colors.textSecondary }]}>
+                                {t('import.preparedApp')}
+                              </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+
+                    {appSearchResults.length > 0 && (
+                      <View style={styles.resultsSection}>
+                        <Text style={[styles.sectionHeading, { color: colors.text }]}>
+                          {t('import.appStoreResults')}
+                        </Text>
+                        {appSearchResults.slice(0, 8).map((app) => (
+                          <Pressable
+                            key={app.trackId}
+                            style={({ pressed }) => [
+                              styles.candidateItem,
+                              {
+                                backgroundColor: colors.surfaceSecondary,
+                                borderColor: colors.border,
+                              },
+                              pressed && { borderColor: colors.accent },
+                            ]}
+                            onPress={() => handleSelectIOSApp(app)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('import.selectApp', { name: app.name })}
+                          >
+                            {app.artworkUrl ? (
+                              <Image
+                                source={{ uri: app.artworkUrl }}
+                                style={styles.candidateIconBadge}
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                              />
+                            ) : (
+                              <View
+                                style={[
+                                  styles.candidateIconBadge,
+                                  { backgroundColor: colors.accentSurface },
+                                ]}
+                              >
+                                <Ionicons name="apps-outline" size={19} color={colors.accent} />
+                              </View>
+                            )}
+                            <View style={styles.candidateDetails}>
+                              <Text
+                                style={[styles.candidateTitle, { color: colors.text }]}
+                                numberOfLines={1}
+                              >
+                                {app.name}
+                              </Text>
+                              <Text
+                                style={[styles.candidateSub, { color: colors.textSecondary }]}
+                                numberOfLines={1}
+                              >
+                                {app.publisher}
+                              </Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+
+                    {!isAppSearchLoading &&
+                      !appSearchError &&
+                      appSearchQuery.trim().length > 0 &&
+                      featuredAppMatches.length === 0 &&
+                      appSearchResults.length === 0 && (
+                        <Text style={[styles.emptyResults, { color: colors.textSecondary }]}>
+                          {t('import.noAppResults')}
+                        </Text>
+                      )}
+                  </View>
+                )}
+
+                <View>
+                  {importMode === 'liveContainer' && (!previewResult || showCandidatePicker) && (
+                    <>
+                  <Text style={[styles.modeDescription, { color: colors.textSecondary }]}>
+                    {t('import.liveContainerDescription')}
+                  </Text>
                   {/* Paste from Clipboard Button */}
                   <Pressable
                     style={({ pressed }) => [
@@ -352,7 +671,10 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                       placeholder={t('import.inputPlaceholder')}
                       placeholderTextColor={colors.textMuted}
                       value={inputUrl}
-                      onChangeText={setInputUrl}
+                      onChangeText={(value) => {
+                        setInputUrl(value);
+                        setProcessingError(false);
+                      }}
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="go"
@@ -371,6 +693,60 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                       <Ionicons name="arrow-forward" size={20} color={colors.surface} />
                     </Pressable>
                   </View>
+                  <Pressable
+                    style={[
+                      styles.guideToggle,
+                      { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
+                    ]}
+                    onPress={() => setShowGuide(!showGuide)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: showGuide }}
+                  >
+                    <Ionicons name="help-circle-outline" size={18} color={colors.accent} />
+                    <Text style={[styles.guideToggleText, { color: colors.accentStrong }]}>
+                      {t('import.guideTitle')}
+                    </Text>
+                    <Ionicons
+                      name={showGuide ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                  {showGuide && (
+                    <View
+                      style={[
+                        styles.guideBox,
+                        { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.requirementCard,
+                          { backgroundColor: colors.accentSurface, borderColor: colors.border },
+                        ]}
+                      >
+                        <Ionicons name="information-circle" size={17} color={colors.accent} />
+                        <Text style={[styles.requirementText, { color: colors.text }]}>
+                          {t('import.nx2appleRequirementText')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>
+                        {t('import.guideStep1')}
+                      </Text>
+                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>
+                        {t('import.guideStep2')}
+                      </Text>
+                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>
+                        {t('import.guideStep3')}
+                      </Text>
+                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>
+                        {t('import.guideStep4')}
+                      </Text>
+                      <Text style={[styles.guideStepText, { color: colors.textSecondary }]}>
+                        {t('import.guideStep5')}
+                      </Text>
+                    </View>
+                  )}
 
                   {/* Name Prompt Box (When Title ID is not recognized or when user wants to change) */}
                   {(showNamePrompt || showCandidatePicker) && (
@@ -471,6 +847,32 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                       <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{stepMessage}</Text>
                     </View>
                   )}
+                  {processingError && (
+                    <View style={[styles.inlineNotice, { borderColor: colors.destructive }]}>
+                      <Ionicons name="alert-circle-outline" size={18} color={colors.destructive} />
+                      <Text
+                        style={[
+                          styles.guideStepText,
+                          styles.inlineNoticeText,
+                          { color: colors.destructive },
+                        ]}
+                      >
+                        {t('import.linkProcessError')}
+                      </Text>
+                      <Pressable
+                        style={styles.retryButton}
+                        onPress={() => processUrl(inputUrl)}
+                        disabled={!inputUrl.trim() || isProcessing}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.retryText, { color: colors.accent }]}>
+                          {t('import.tryAgain')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                    </>
+                  )}
 
                   {/* Preview Card */}
                   {previewResult && previewResult.metadata.title && !showCandidatePicker ? (
@@ -514,6 +916,7 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                       </View>
 
                       {/* Change / Re-select candidate button */}
+                      {!previewResult.metadata.appStoreId && (
                       <Pressable
                         style={({ pressed }) => [
                           styles.changeCandidateBtn,
@@ -531,6 +934,7 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                           {t('import.changeTitle')}
                         </Text>
                       </Pressable>
+                      )}
 
                       {/* Offline notice when metadata is pending */}
                       {isManualOffline && (
@@ -545,24 +949,32 @@ export const ImportGameModal: React.FC<ImportGameModalProps> = ({
                   ) : null}
 
                   {/* Footer Buttons */}
-                  <View style={styles.footerRow}>
-                    <Pressable
-                      style={[styles.cancelButton, { backgroundColor: colors.surfaceSecondary }]}
-                      onPress={() => {
-                        handleReset();
-                        onClose();
-                      }}
-                    >
-                      <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>{t('common.cancel')}</Text>
-                    </Pressable>
-
-                    {previewResult && previewResult.metadata.title ? (
-                      <Pressable style={[styles.confirmButton, { backgroundColor: colors.accent }]} onPress={handleConfirmAdd}>
-                        <Ionicons name="add" size={20} color={colors.surface} style={{ marginRight: 4 }} />
-                        <Text style={[styles.confirmButtonText, { color: colors.surface }]}>{t('common.save')}</Text>
+                  {previewResult?.metadata.title && !showCandidatePicker && (
+                    <View style={[styles.footerRow, { borderTopColor: colors.border }]}>
+                      <Pressable
+                        style={[styles.cancelButton, { backgroundColor: colors.surfaceSecondary }]}
+                        onPress={() => {
+                          handleReset();
+                          onClose();
+                        }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>
+                          {t('common.cancel')}
+                        </Text>
                       </Pressable>
-                    ) : null}
-                  </View>
+                      <Pressable
+                        style={[styles.confirmButton, { backgroundColor: colors.accent }]}
+                        onPress={handleConfirmAdd}
+                        accessibilityRole="button"
+                      >
+                        <Ionicons name="add" size={20} color={colors.surface} style={{ marginRight: 4 }} />
+                        <Text style={[styles.confirmButtonText, { color: colors.surface }]}>
+                          {t('import.addToLibrary')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               </View>
             </ScrollView>
@@ -581,35 +993,26 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '100%',
-    backgroundColor: '#2D2D2D',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#444444',
+    backgroundColor: '#202326',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#41474C',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   containerPortrait: {
     maxWidth: 560,
   },
   containerLandscape: {
-    maxWidth: 900,
-    padding: 14,
+    maxWidth: 1120,
+    padding: 24,
   },
-  contentColumns: {
-    gap: 16,
-  },
-  contentColumnsLandscape: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 18,
-  },
-  columnLandscape: {
-    flex: 1,
-    minWidth: 0,
+  contentStack: {
+    gap: 14,
   },
   contentScroll: {
     flexShrink: 1,
@@ -625,17 +1028,90 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#383838',
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  modePicker: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: 13,
+    borderWidth: 1,
+    gap: 4,
+    marginBottom: 16,
+  },
+  modeOption: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  modeOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modeOptionTextSelected: {
+    fontWeight: '700',
+  },
+  resultsSection: {
+    gap: 8,
+    marginTop: 20,
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  emptyResults: {
+    paddingVertical: 20,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inlineNotice: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  inlineNoticeText: {
+    flex: 1,
+  },
+  retryButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  retryText: {
+    fontWeight: '700',
+  },
+  modeDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   },
   guideToggle: {
     flexDirection: 'row',
@@ -658,11 +1134,11 @@ const styles = StyleSheet.create({
   guideBox: {
     backgroundColor: '#242424',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     gap: 8,
     marginBottom: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: '#00D2FF',
+    borderWidth: 1,
+    borderColor: '#383838',
   },
   guideStepText: {
     fontSize: 12,
@@ -693,7 +1169,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: '#242424',
-    borderWidth: 1.5,
+    minHeight: 48,
+    borderWidth: 1,
     borderColor: '#00D2FF',
     borderRadius: 8,
     paddingVertical: 12,
@@ -708,7 +1185,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inputLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#A0A0A0',
     fontWeight: '600',
     marginBottom: 6,
@@ -720,18 +1197,20 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     backgroundColor: '#242424',
-    borderRadius: 8,
+    minHeight: 48,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 15,
     borderWidth: 1,
     borderColor: '#383838',
   },
   searchButton: {
     backgroundColor: '#00D2FF',
-    width: 44,
-    borderRadius: 8,
+    width: 48,
+    minHeight: 48,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -772,15 +1251,16 @@ const styles = StyleSheet.create({
   candidateItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 6,
+    minHeight: 58,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
     gap: 8,
   },
   candidateIconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -788,11 +1268,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   candidateTitle: {
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: '700',
   },
   candidateSub: {
-    fontSize: 10.5,
+    fontSize: 12,
   },
   manualFallbackBtn: {
     flexDirection: 'row',
@@ -827,16 +1307,16 @@ const styles = StyleSheet.create({
   previewCard: {
     flexDirection: 'row',
     backgroundColor: '#242424',
-    borderRadius: 8,
+    borderRadius: 14,
     padding: 12,
     gap: 12,
     borderWidth: 1,
     borderColor: '#383838',
   },
   previewCover: {
-    width: 76,
-    height: 76,
-    borderRadius: 6,
+    width: 84,
+    height: 84,
+    borderRadius: 10,
   },
   previewInfo: {
     flex: 1,
@@ -898,14 +1378,19 @@ const styles = StyleSheet.create({
   },
   footerRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
+    justifyContent: 'space-between',
+    gap: 12,
     marginTop: 18,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#41474C',
   },
   cancelButton: {
-    paddingVertical: 10,
+    minHeight: 48,
+    minWidth: 104,
+    justifyContent: 'center',
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: '#383838',
   },
   cancelButtonText: {
@@ -913,12 +1398,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   confirmButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
     backgroundColor: '#00D2FF',
-    paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   confirmButtonText: {
     color: '#1E1E1E',
