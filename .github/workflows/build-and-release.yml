@@ -68,7 +68,7 @@ jobs:
     name: Build iOS IPA & Publish Release
     needs: check-version
     if: needs.check-version.outputs.should_build == 'true'
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

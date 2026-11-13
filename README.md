@@ -1,5 +1,10 @@
 # NX Horizon
 
+<div align="center">
+  <img src="assets/screenshots/1-home-screen.png" alt="NX Horizon Dashboard" width="750" />
+  <p><em>Nintendo Switch Horizon OS frontend running compiled game ports on iPhone.</em></p>
+</div>
+
 NX Horizon is an experimental iOS launcher for Nintendo Switch game ports
 compiled for iPhone with [NX2Apple](https://github.com/LNPANDY/NX2Apple). It
 organizes ports in a console-inspired library and hands them off to
@@ -20,14 +25,18 @@ SideStore is not a supported launch path.
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
-- [Building games with NX2Apple](#building-games-with-nx2apple)
+- [Recommended Setup: Install NX Horizon inside LiveContainer](#recommended-setup-install-nx-horizon-inside-livecontainer)
 - [Installing games in LiveContainer](#installing-games-in-livecontainer)
 - [Adding a game to NX Horizon](#adding-a-game-to-nx-horizon)
+- [Game Details & Launching](#game-details--launching)
+- [Per-Game Performance Settings](#per-game-performance-settings)
+- [Console Settings & Direct Boot](#console-settings--direct-boot)
+- [Building games with NX2Apple](#building-games-with-nx2apple)
 - [Features](#features)
+- [Installing with SideStore / AltStore Source](#installing-with-sidestore--altstore-source)
 - [Building NX Horizon for iOS](#building-nx-horizon-for-ios)
 - [Development](#development)
 - [Project structure](#project-structure)
-- [Screenshots](#screenshots)
 - [Contributing](#contributing)
 - [Limitations and support](#limitations-and-support)
 
@@ -126,10 +135,19 @@ When installed inside LiveContainer:
 
 1. **Global Settings in LiveContainer:**
    - Open LiveContainer Settings.
-   - Enable **"Switch App Without Asking"**. This suppresses confirmation popups every time you launch a game from NX Horizon, providing a console-like experience.
+   - Enable **"Switch App Without Asking"**. This suppresses confirmation popups every time you launch a game from NX Horizon, providing a seamless console experience.
+
+   <p align="center">
+     <img src="assets/screenshots/4-lc-switch-without-asking.png" alt="LiveContainer Switch App Without Asking" width="550" />
+   </p>
+
 2. **App Settings for NX Horizon inside LiveContainer:**
    - In LiveContainer's Apps list, tap or long-press **NX Horizon** to open its app settings.
    - Enable **"Fix File Picker"**. This ensures the iOS document picker operates reliably without crashes whenever file picking is used.
+
+   <p align="center">
+     <img src="assets/screenshots/3-lc-fix-file-picker.png" alt="LiveContainer Fix File Picker" width="550" />
+   </p>
 
 ---
 
@@ -179,7 +197,11 @@ game:
 2. Tap **+** and select the game's standalone IPA.
 3. Follow LiveContainer's prompts to install/import the app.
 4. Launch the imported game once from LiveContainer if needed, then copy its
-   launch URL as described above.
+   launch URL: long-press the game, choose **Add to Home Screen**, and tap **Copy Launch URL**:
+
+<p align="center">
+  <img src="assets/screenshots/6-lc-copy-launch-url.png" alt="Copy Launch URL in LiveContainer" width="550" />
+</p>
 
 NX Horizon does not embed LiveContainer or install game IPAs itself. Both
 NX Horizon and LiveContainer must be installed separately on the device. A
@@ -198,6 +220,10 @@ from iOS instead.
    title manually.
 4. Save the game. The carousel's dashed tile and the dock button both open this
    same import dialog.
+
+<p align="center">
+  <img src="assets/screenshots/2-register-modal.png" alt="Register Game Modal" width="550" />
+</p>
 
 When a URL contains a Nintendo Switch title ID, NX Horizon attempts to retrieve
 metadata and artwork from the NLib API and can fall back to its bundled
@@ -220,6 +246,39 @@ The library can also be populated with a title ID or name when a launch URL is
 not available, but a usable LiveContainer URL is required to launch that
 entry. Adding an app's display name or bundle identifier does not enable
 direct launching of a separately installed iOS app.
+
+## Game Details & Launching
+
+Selecting any game from the home carousel or library opens its detailed view. Here you can inspect high-resolution banner artwork, publisher info, release date, categories, playtime tracking, and a synchronized bilingual synopsis (in Spanish or English according to your active console language):
+
+<p align="center">
+  <img src="assets/screenshots/5-game-details.png" alt="Game Details View" width="750" />
+</p>
+
+## Per-Game Performance Settings
+
+Tap the **Configuration** button (gear icon) on any game or in the detail view to fine-tune port-specific performance parameters written directly to its LiveContainer container (`env.txt`):
+- **Operation Mode:** Toggle between Handheld (720p portable profile) and Docked (1080p profile).
+- **Target Frame Rate:** Limit or uncap frame rate (Auto / 30 FPS / 60 FPS).
+- **Apple Metal Performance HUD:** Display real-time FPS, GPU load, and memory usage overlay.
+- **Motion Controls:** Enable device gyroscope and accelerometer simulation for motion-enabled games.
+- **Game Language:** Force game locale independently (`es-ES`, `en-US`, `ja-JP`, etc.).
+
+<p align="center">
+  <img src="assets/screenshots/7-game-config.png" alt="Per-Game Launch Configuration" width="550" />
+</p>
+
+## Console Settings & Direct Boot
+
+In the console settings screen, you can manage system-wide launcher preferences:
+- **LiveContainer Status:** Automatically verifies shared container folder access (`Data/Application`).
+- **Direct Boot (`DM_LAUNCHER=0`):** Automatically boots games into fullscreen without the LiveContainer menu appearing.
+- **Controller Diagnostics:** Interactive visual gamepad tester with deadzone calibration.
+- **Bilingual Interface:** Switch between Spanish and English on the fly.
+
+<p align="center">
+  <img src="assets/screenshots/8-settings-direct-boot.png" alt="Console Settings & Direct Boot" width="750" />
+</p>
 
 ## Features
 
@@ -260,7 +319,7 @@ You can add NX Horizon directly to **SideStore** or **AltStore** to receive auto
 NX Horizon includes an automated GitHub Actions compilation and release workflow (`.github/workflows/build-and-release.yml`):
 
 - **Automatic Version Detection:** On push to `main`, the workflow reads the version from `package.json` and checks if a corresponding Git tag (`v<version>`) already exists.
-- **On-Demand Compilation:** If a new version is detected, a `macos-14` runner compiles the unsigned IPA (`build.sh`), calculates SHA256 checksums, dynamically updates `apps.json`, and publishes an official GitHub Release with assets attached.
+- **On-Demand Compilation:** If a new version is detected, a `macos-latest` runner compiles the unsigned IPA (`build.sh`), calculates SHA256 checksums, dynamically updates `apps.json`, and publishes an official GitHub Release with assets attached.
 
 ---
 
@@ -355,26 +414,6 @@ bash -n build.sh
 The game library, preferences, and launch settings are stored on-device using
 AsyncStorage. Game metadata and artwork may be requested from the configured
 metadata service when a title is added or refreshed.
-
-## Screenshots
-
-| 1. Home Carousel (Games Loaded) | 2. Register Game Modal |
-| :---: | :---: |
-| ![Home Carousel](assets/screenshots/1-home-screen.png) | ![Register Game](assets/screenshots/2-register-modal.png) |
-
-| 3. LiveContainer: Fix File Picker | 4. LiveContainer: Switch Without Asking |
-| :---: | :---: |
-| ![Fix File Picker](assets/screenshots/3-lc-fix-file-picker.png) | ![Switch Without Asking](assets/screenshots/4-lc-switch-without-asking.png) |
-
-| 5. Game Details View | 6. LiveContainer: Copy Launch URL |
-| :---: | :---: |
-| ![Game Details](assets/screenshots/5-game-details.png) | ![Copy Launch URL](assets/screenshots/6-lc-copy-launch-url.png) |
-
-| 7. Per-Game Performance Settings | 8. Console Settings & Direct Boot |
-| :---: | :---: |
-| ![Game Config](assets/screenshots/7-game-config.png) | ![Direct Boot Settings](assets/screenshots/8-settings-direct-boot.png) |
-
-> *Screenshots are stored in [`assets/screenshots/`](assets/screenshots/).*
 
 ## Contributing
 
