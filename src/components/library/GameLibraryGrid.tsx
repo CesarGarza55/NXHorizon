@@ -340,7 +340,6 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     borderRadius: 6,
-    overflow: 'hidden',
     backgroundColor: '#1E1E1E',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

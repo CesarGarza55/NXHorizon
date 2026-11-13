@@ -348,7 +348,6 @@ const styles = StyleSheet.create({
   },
   tileContainer: {
     borderRadius: 6,
-    overflow: 'hidden',
     backgroundColor: '#242424',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

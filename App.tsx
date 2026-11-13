@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -22,6 +22,7 @@ import { useGameStore } from './src/state/useGameStore';
 import { useFocusStore } from './src/state/useFocusStore';
 import { useGamepad } from './src/hooks/useGamepad';
 import { GameMetadata } from './src/types/game';
+import { AppReleaseInfo, checkForAppUpdates } from './src/services/updateService';
 
 import { SwitchTopBar } from './src/components/switch/SwitchTopBar';
 import { SwitchBottomDock } from './src/components/switch/SwitchBottomDock';
@@ -82,7 +83,11 @@ function MainNavigator() {
   const [configModalGame, setConfigModalGame] = useState<GameMetadata | null>(null);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [isOnboardingVisible, setIsOnboardingVisible] = useState(false);
+  const [isOnboardingResolved, setIsOnboardingResolved] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('support');
+  const [pendingHomeUpdate, setPendingHomeUpdate] = useState<AppReleaseInfo | null>(null);
+  const hasCheckedHomeUpdatesRef = useRef(false);
+  const hasShownHomeUpdateRef = useRef(false);
 
   const openSettings = (section: SettingsSection = 'support') => {
     setSettingsSection(section);
@@ -108,8 +113,63 @@ function MainNavigator() {
       if (val !== 'true') {
         setIsOnboardingVisible(true);
       }
+      setIsOnboardingResolved(true);
+    }).catch((error) => {
+      console.warn('[Home] Failed to load onboarding state:', error);
+      setIsOnboardingResolved(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (
+      activeScreen !== 'home' ||
+      !isOnboardingResolved ||
+      isOnboardingVisible ||
+      hasCheckedHomeUpdatesRef.current
+    ) {
+      return;
+    }
+
+    hasCheckedHomeUpdatesRef.current = true;
+    checkForAppUpdates()
+      .then((release) => {
+        if (release.isNewer) setPendingHomeUpdate(release);
+      })
+      .catch((error) => {
+        console.warn('[Home] Failed to check for app updates:', error);
+      });
+  }, [activeScreen, isOnboardingResolved, isOnboardingVisible]);
+
+  useEffect(() => {
+    if (
+      !pendingHomeUpdate ||
+      activeScreen !== 'home' ||
+      !isOnboardingResolved ||
+      isOnboardingVisible ||
+      hasShownHomeUpdateRef.current
+    ) {
+      return;
+    }
+
+    hasShownHomeUpdateRef.current = true;
+    Alert.alert(
+      t('settings.updateAvailableTitle'),
+      t('settings.newVersionAvailable', { version: pendingHomeUpdate.version }),
+      [
+        {
+          text: t('settings.downloadUpdate'),
+          onPress: () => {
+            if (pendingHomeUpdate.downloadUrl) {
+              Linking.openURL(pendingHomeUpdate.downloadUrl).catch((error) => {
+                console.warn('[Home] Failed to open update download:', error);
+              });
+            }
+          },
+        },
+        { text: t('common.close'), style: 'cancel' },
+      ]
+    );
+  }, [activeScreen, isOnboardingResolved, isOnboardingVisible, pendingHomeUpdate, t]);
 
   const handleCloseOnboarding = async () => {
     setIsOnboardingVisible(false);

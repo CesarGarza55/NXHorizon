@@ -309,8 +309,11 @@ You can add NX Horizon directly to **SideStore** or **AltStore** to receive auto
    ```text
    https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json
    ```
-4. You can also tap this one-click link on your iOS device:
-   [Add NX Horizon to SideStore](sidestore://source?url=https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json)
+4. You can also tap this one-click link on your iOS device to add it automatically:
+   
+   [![Add to SideStore](https://img.shields.io/badge/SideStore-Add%20Source-00D2FF?style=for-the-badge&logo=apple)](https://altdirect.app/?url=https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json&r=sidestore)
+
+   *(Direct deep-link for copy-pasting into Safari: `sidestore://source?url=https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json`)*
 
 ---
 

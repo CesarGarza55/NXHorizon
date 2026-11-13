@@ -15,6 +15,8 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguage = 'auto' | 'es' | 'en';
 
+let languagePreference: SupportedLanguage = 'auto';
+
 export const getDeviceLanguage = (): 'es' | 'en' => {
   try {
     const locales = Localization.getLocales();
@@ -37,6 +39,8 @@ export const initializeI18n = async () => {
   } catch (e) {
     console.warn('[i18n] Failed reading saved language:', e);
   }
+
+  languagePreference = savedLang === 'es' || savedLang === 'en' ? savedLang : 'auto';
 
   const initialLng =
     savedLang === 'es' || savedLang === 'en'
@@ -63,14 +67,18 @@ export const initializeI18n = async () => {
   return initialLng;
 };
 
+export const getAppLanguagePreference = () => languagePreference;
+
 export const setAppLanguage = async (lang: SupportedLanguage) => {
   try {
     if (lang === 'auto') {
       await AsyncStorage.removeItem(LANGUAGE_KEY);
+      languagePreference = lang;
       const deviceLang = getDeviceLanguage();
       await i18n.changeLanguage(deviceLang);
     } else {
       await AsyncStorage.setItem(LANGUAGE_KEY, lang);
+      languagePreference = lang;
       await i18n.changeLanguage(lang);
     }
   } catch (err) {

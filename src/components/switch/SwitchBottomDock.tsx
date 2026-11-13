@@ -169,6 +169,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     position: 'relative',
+    backgroundColor: '#2D2D2D',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.12,

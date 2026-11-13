@@ -29,7 +29,17 @@ echo "[1/5] Installing locked dependencies..."
 pnpm install --frozen-lockfile
 
 echo ""
-echo "[2/5] Generating the iOS project..."
+echo "[2/5] Synchronizing app.json version and generating the iOS project..."
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+  if (pkg.version && app.expo && app.expo.version !== pkg.version) {
+    app.expo.version = pkg.version;
+    fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+    console.log('Synchronized app.json version to ' + pkg.version);
+  }
+"
 pnpm exec expo prebuild --platform ios --clean --no-install
 
 echo ""

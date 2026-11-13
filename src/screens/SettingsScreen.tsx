@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { setAppLanguage, SupportedLanguage } from '../i18n';
+import { getAppLanguagePreference, setAppLanguage, SupportedLanguage } from '../i18n';
 import { useGamepad } from '../hooks/useGamepad';
 import { useGameStore } from '../state/useGameStore';
 import { useFocusStore } from '../state/useFocusStore';
@@ -55,11 +55,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onShowOnboarding,
   initialSection = 'support',
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { colors, mode: themeMode, setMode: setThemeMode } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const appVersion = getCurrentAppVersion();
 
   const SECTIONS: SettingsSection[] = [
     'support',
@@ -75,6 +76,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [focusZone, setFocusZone] = useState<'sidebar' | 'content'>('sidebar');
   const [focusedContentIndex, setFocusedContentIndex] = useState(0);
+  const [languagePreference, setLanguagePreference] = useState<SupportedLanguage>(getAppLanguagePreference());
 
   const sidebarScrollRef = React.useRef<any>(null);
   const detailScrollRef = React.useRef<any>(null);
@@ -207,6 +209,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleLanguageChange = async (lang: SupportedLanguage) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
     await setAppLanguage(lang);
+    setLanguagePreference(getAppLanguagePreference());
   };
 
   const handleApplyDefaultsToAll = async () => {
@@ -595,8 +598,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     onButtonPress: handleGamepadButtonPress,
   });
 
-  const currentLang = i18n.language;
-
   const renderSidebarItem = (id: SettingsSection, label: string) => {
     const isSelected = activeSection === id;
     const isSidebarFocused = focusZone === 'sidebar' && isSelected;
@@ -608,7 +609,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           isSelected
             ? [
                 styles.menuItemSelected,
-                { borderColor: isSidebarFocused ? colors.accent : colors.border },
+                {
+                  backgroundColor: colors.surfaceSecondary,
+                  borderColor: isSidebarFocused ? colors.accent : colors.border,
+                },
                 isSidebarFocused && styles.menuItemSelectedGlow,
               ]
             : styles.menuItemDefault,
@@ -821,7 +825,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </View>
                 <View style={styles.statusRowItem}>
                   <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>{t('settings.versionLabel')}</Text>
-                  <Text style={[styles.statusValue, { color: colors.text }]}>{t('settings.versionValue')}</Text>
+                  <Text style={[styles.statusValue, { color: colors.text }]}>{t('settings.versionValue', { version: appVersion })}</Text>
                 </View>
               </View>
             </View>
@@ -891,11 +895,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
               <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {[
-                  { id: 'auto' as SupportedLanguage, label: t('settings.languageSystem'), isSelected: false, isSparkle: true },
-                  { id: 'es' as SupportedLanguage, label: 'Español', isSelected: currentLang.startsWith('es'), isSparkle: false },
-                  { id: 'en' as SupportedLanguage, label: 'English', isSelected: currentLang.startsWith('en'), isSparkle: false },
+                  { id: 'auto' as SupportedLanguage, label: t('settings.languageSystem') },
+                  { id: 'es' as SupportedLanguage, label: 'Español' },
+                  { id: 'en' as SupportedLanguage, label: 'English' },
                 ].map((item, index) => {
                   const isFocused = focusZone === 'content' && focusedContentIndex === index;
+                  const isSelected = languagePreference === item.id;
                   return (
                     <Pressable
                       key={item.id}
@@ -909,6 +914,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         setFocusedContentIndex(index);
                         handleLanguageChange(item.id);
                       }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {isFocused && (
@@ -918,17 +925,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           style={[
                             styles.optionLabel,
                             { color: colors.text },
-                            (item.isSelected || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                            (isSelected || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
                           ]}
                         >
                           {item.label}
                         </Text>
                       </View>
-                      {item.isSelected && (
+                      {isSelected && (
                         <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
-                      )}
-                      {!item.isSelected && item.isSparkle && (
-                        <Ionicons name="sparkles" size={16} color={colors.accent} />
                       )}
                     </Pressable>
                   );
@@ -1556,7 +1560,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               >
                 <View style={styles.aboutVersionRow}>
                   <Text style={[styles.aboutVersionText, { color: colors.text }]}>
-                    {t('settings.version')}
+                    {t('settings.version', { version: appVersion })}
                   </Text>
                   <View
                     style={[
