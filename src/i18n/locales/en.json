@@ -169,6 +169,7 @@
     "batteryUnknown": "Battery: N/A",
     "diagnostics": "Button Test & Diagnostics",
     "deadzone": "Stick Deadzone",
+    "deadzoneDesc": "Applies only to menu navigation in NX Horizon to prevent stick drift. Does not affect in-game deadzones in LiveContainer.",
     "deadzoneValue": "{{value}}%",
     "navigationMode": "Navigation Mode",
     "navigationHybrid": "Hybrid (Touchscreen + Controller)",

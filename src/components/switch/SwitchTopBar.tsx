@@ -79,20 +79,32 @@ export const SwitchTopBar: React.FC<SwitchTopBarProps> = ({
     };
   }, []);
 
-  const renderBatteryIcon = () => {
+  const getBatteryColor = () => {
     if (battery.isCharging) {
-      return <Ionicons name="battery-charging" size={18} color={colors.accent || '#10B981'} />;
+      return '#34C759'; // Charging green
     }
-    if (battery.level <= 15) {
-      return <Ionicons name="battery-dead" size={18} color="#FF3C28" />;
+    if (battery.level <= 10) {
+      return '#FF3B30'; // Critical red
     }
-    if (battery.level <= 45) {
-      return <Ionicons name="battery-dead" size={18} color={colors.text} />;
+    if (battery.level <= 20) {
+      return '#FF9500'; // Low battery warning orange
     }
-    if (battery.level <= 80) {
-      return <Ionicons name="battery-half" size={18} color={colors.text} />;
+    return colors.text;
+  };
+
+  const renderBatteryIcon = () => {
+    const batteryColor = getBatteryColor();
+
+    if (battery.isCharging) {
+      return <Ionicons name="battery-charging" size={18} color={batteryColor} />;
     }
-    return <Ionicons name="battery-full" size={18} color={colors.text} />;
+    if (battery.level <= 20) {
+      return <Ionicons name="battery-dead" size={18} color={batteryColor} />;
+    }
+    if (battery.level <= 70) {
+      return <Ionicons name="battery-half" size={18} color={batteryColor} />;
+    }
+    return <Ionicons name="battery-full" size={18} color={batteryColor} />;
   };
 
   const renderNetworkIcon = () => {
@@ -159,7 +171,7 @@ export const SwitchTopBar: React.FC<SwitchTopBarProps> = ({
         )}
         <Text style={[styles.clockText, { color: colors.text }]}>{currentTime}</Text>
         {renderNetworkIcon()}
-        <Text style={[styles.batteryPercentText, { color: colors.text }]}>
+        <Text style={[styles.batteryPercentText, { color: battery.isCharging ? colors.text : getBatteryColor() }]}>
           {battery.level}%
         </Text>
         {renderBatteryIcon()}

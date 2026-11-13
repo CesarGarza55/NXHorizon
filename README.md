@@ -273,7 +273,7 @@ Tap the **Configuration** button (gear icon) on any game or in the detail view t
 In the console settings screen, you can manage system-wide launcher preferences:
 - **LiveContainer Status:** Automatically verifies shared container folder access (`Data/Application`).
 - **Direct Boot (`DM_LAUNCHER=0`):** Automatically boots games into fullscreen without the LiveContainer menu appearing.
-- **Controller Diagnostics:** Interactive visual gamepad tester with deadzone calibration.
+- **Controller Diagnostics:** Interactive visual gamepad tester and launcher stick deadzone calibration (prevents menu drift).
 - **Bilingual Interface:** Switch between Spanish and English on the fly.
 
 <p align="center">
@@ -287,12 +287,12 @@ In the console settings screen, you can manage system-wide launcher preferences:
 - Game carousel and searchable library with favorites and recently played
   entries.
 - Game metadata, artwork, play-time tracking, and manual title entry.
-- LiveContainer URL launching and optional LiveContainer folder linking.
-- Per-game launch settings for supported ports, including operation mode,
-  frame-rate target, render scale, upscaler, HUD, motion, and language.
+- LiveContainer URL launching and automatic container folder detection.
+- Per-game launch settings for supported ports, including operation mode
+  (Handheld 720p / Docked 1080p), frame-rate target, Metal HUD, motion, and language.
 - Optional direct-boot configuration that writes supported launch settings to
   the linked LiveContainer game container.
-- Bluetooth/game controller status, button input, and deadzone controls.
+- Bluetooth/game controller status, button input test, and launcher stick deadzone controls.
 - English and Spanish UI translations.
 - Automatic, light, and dark appearance modes.
 

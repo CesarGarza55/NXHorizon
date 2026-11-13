@@ -61,40 +61,63 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
+  const SECTIONS: SettingsSection[] = [
+    'support',
+    'appearance',
+    'language',
+    'orientation',
+    'controllers',
+    'livecontainer',
+    'storage',
+    'about',
+  ];
+
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
+  const [focusZone, setFocusZone] = useState<'sidebar' | 'content'>('sidebar');
+  const [focusedContentIndex, setFocusedContentIndex] = useState(0);
+
+  const sidebarScrollRef = React.useRef<any>(null);
+  const detailScrollRef = React.useRef<any>(null);
 
   React.useEffect(() => {
     setActiveSection(initialSection);
+    setFocusedContentIndex(0);
   }, [initialSection]);
+
+  const activeSectionIndex = SECTIONS.indexOf(activeSection);
+
+  // Auto-scroll sidebar when activeSection changes
+  React.useEffect(() => {
+    if (isLandscape) {
+      sidebarScrollRef.current?.scrollTo({ y: Math.max(0, activeSectionIndex * 48 - 60), animated: true });
+    } else {
+      sidebarScrollRef.current?.scrollTo({ x: Math.max(0, activeSectionIndex * 105 - 60), animated: true });
+    }
+  }, [activeSectionIndex, isLandscape]);
+
+  // Auto-scroll detail panel when focusedContentIndex changes
+  React.useEffect(() => {
+    if (focusZone === 'content') {
+      let targetY = 0;
+      if (activeSection === 'livecontainer') {
+        targetY = Math.max(0, focusedContentIndex * 65 - 80);
+      } else if (activeSection === 'support') {
+        targetY = focusedContentIndex === 0 ? 0 : 130;
+      } else if (activeSection === 'about') {
+        targetY = focusedContentIndex === 0 ? 0 : focusedContentIndex * 60;
+      } else {
+        targetY = Math.max(0, focusedContentIndex * 54 - 60);
+      }
+      detailScrollRef.current?.scrollTo({ y: targetY, animated: true });
+    }
+  }, [focusZone, focusedContentIndex, activeSection]);
 
   const { isControllerTestActive, setControllerTestActive } = useFocusStore();
   const lastBTapTimeRef = React.useRef<number>(0);
 
-  const handleGamepadButtonPress = React.useCallback(
-    (button: ControllerButton) => {
-      if (button === 'B' && isControllerTestActive) {
-        const now = Date.now();
-        // If user double-taps B quickly within 750ms while in test mode, exit test and exit settings
-        if (now - lastBTapTimeRef.current < 750) {
-          setControllerTestActive(false);
-          onBackPress?.();
-          return;
-        }
-        lastBTapTimeRef.current = now;
-      }
-    },
-    [isControllerTestActive, onBackPress, setControllerTestActive]
-  );
-
-  const { controllers, activeController, isConnected, lastPressedButton } = useGamepad({
-    onButtonPress: handleGamepadButtonPress,
-  });
-
-  // When activeSection is controllers, enable test mode so B button is tested without exiting
+  // Turn off controller test when unmounting or leaving controllers tab
   React.useEffect(() => {
-    if (activeSection === 'controllers') {
-      setControllerTestActive(true);
-    } else {
+    if (activeSection !== 'controllers') {
       setControllerTestActive(false);
     }
     return () => {
@@ -256,27 +279,357 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   };
 
+  const getContentItemCount = React.useCallback((): number => {
+    switch (activeSection) {
+      case 'support':
+        return 2;
+      case 'appearance':
+        return 3;
+      case 'language':
+        return 3;
+      case 'orientation':
+        return 3;
+      case 'controllers':
+        return 4;
+      case 'livecontainer':
+        return liveContainerStatus.isLinked ? 8 : 7;
+      case 'storage':
+        return 2;
+      case 'about':
+        return updateStatus === 'update_available' ? 3 : 2;
+      default:
+        return 0;
+    }
+  }, [activeSection, liveContainerStatus.isLinked, updateStatus]);
+
+  const executeContentAction = React.useCallback(
+    (index: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      switch (activeSection) {
+        case 'support':
+          if (index === 0) {
+            Linking.openURL('https://github.com/CesarGarza55/NXHorizon').catch(() => {});
+          } else if (index === 1) {
+            onShowOnboarding?.();
+          }
+          break;
+        case 'appearance': {
+          const modes: ThemeMode[] = ['system', 'light', 'dark'];
+          if (modes[index]) handleThemeChange(modes[index]);
+          break;
+        }
+        case 'language': {
+          const langs: SupportedLanguage[] = ['auto', 'es', 'en'];
+          if (langs[index]) handleLanguageChange(langs[index]);
+          break;
+        }
+        case 'orientation': {
+          const orientations: ('auto' | 'landscape' | 'portrait')[] = ['auto', 'landscape', 'portrait'];
+          if (orientations[index]) handleOrientationChange(orientations[index]);
+          break;
+        }
+        case 'controllers':
+          if (index === 0) {
+            setControllerTestActive(!isControllerTestActive);
+          } else if (index === 1) {
+            handleDeadzoneChange(10);
+          } else if (index === 2) {
+            handleDeadzoneChange(15);
+          } else if (index === 3) {
+            handleDeadzoneChange(20);
+          }
+          break;
+        case 'livecontainer': {
+          const idxOffset = liveContainerStatus.isLinked ? 1 : 0;
+          if (index === 0) {
+            handleLinkLiveContainer();
+          } else if (liveContainerStatus.isLinked && index === 1) {
+            handleUnlinkLiveContainer();
+          } else if (index === 1 + idxOffset) {
+            handleToggleDirectBoot(!isDirectBootEnabled);
+          } else if (index === 2 + idxOffset) {
+            const nextMode = globalLaunchConfig.opMode === 'handheld' ? 'docked' : 'handheld';
+            updateGlobalLaunchConfig({ opMode: nextMode });
+          } else if (index === 3 + idxOffset) {
+            const nextFps = globalLaunchConfig.fpsTarget === 0 ? 30 : globalLaunchConfig.fpsTarget === 30 ? 60 : 0;
+            updateGlobalLaunchConfig({ fpsTarget: nextFps });
+          } else if (index === 4 + idxOffset) {
+            updateGlobalLaunchConfig({ metalHud: !globalLaunchConfig.metalHud });
+          } else if (index === 5 + idxOffset) {
+            updateGlobalLaunchConfig({ phoneMotion: !globalLaunchConfig.phoneMotion });
+          } else if (index === 6 + idxOffset) {
+            handleApplyDefaultsToAll();
+          }
+          break;
+        }
+        case 'storage':
+          if (index === 0) {
+            handleClearCache();
+          } else if (index === 1) {
+            Alert.alert(
+              t('common.delete'),
+              t('settings.resetLibraryConfirm'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('common.delete'), style: 'destructive', onPress: clearAllGames },
+              ]
+            );
+          }
+          break;
+        case 'about':
+          if (updateStatus === 'update_available') {
+            if (index === 0 && latestRelease?.downloadUrl) {
+              Linking.openURL(latestRelease.downloadUrl).catch(() => {});
+            } else if (index === 1) {
+              handleCheckForUpdates();
+            } else if (index === 2) {
+              Linking.openURL('https://github.com/CesarGarza55/NXHorizon').catch(() => {});
+            }
+          } else {
+            if (index === 0) {
+              handleCheckForUpdates();
+            } else if (index === 1) {
+              Linking.openURL('https://github.com/CesarGarza55/NXHorizon').catch(() => {});
+            }
+          }
+          break;
+      }
+    },
+    [
+      activeSection,
+      onShowOnboarding,
+      handleThemeChange,
+      handleLanguageChange,
+      handleOrientationChange,
+      isControllerTestActive,
+      setControllerTestActive,
+      handleDeadzoneChange,
+      liveContainerStatus.isLinked,
+      handleLinkLiveContainer,
+      handleUnlinkLiveContainer,
+      handleToggleDirectBoot,
+      isDirectBootEnabled,
+      globalLaunchConfig,
+      updateGlobalLaunchConfig,
+      handleApplyDefaultsToAll,
+      handleClearCache,
+      t,
+      clearAllGames,
+      updateStatus,
+      latestRelease,
+      handleCheckForUpdates,
+    ]
+  );
+
+  const handleContentLeftRight = React.useCallback(
+    (dir: 'left' | 'right') => {
+      if (activeSection === 'livecontainer') {
+        const idxOffset = liveContainerStatus.isLinked ? 1 : 0;
+        if (focusedContentIndex === 1 + idxOffset) {
+          handleToggleDirectBoot(!isDirectBootEnabled);
+        } else if (focusedContentIndex === 2 + idxOffset) {
+          const target = dir === 'left' ? 'handheld' : 'docked';
+          updateGlobalLaunchConfig({ opMode: target });
+        } else if (focusedContentIndex === 3 + idxOffset) {
+          if (dir === 'right') {
+            const next = globalLaunchConfig.fpsTarget === 0 ? 30 : globalLaunchConfig.fpsTarget === 30 ? 60 : 0;
+            updateGlobalLaunchConfig({ fpsTarget: next });
+          } else {
+            const prev = globalLaunchConfig.fpsTarget === 0 ? 60 : globalLaunchConfig.fpsTarget === 60 ? 30 : 0;
+            updateGlobalLaunchConfig({ fpsTarget: prev });
+          }
+        } else if (focusedContentIndex === 4 + idxOffset) {
+          updateGlobalLaunchConfig({ metalHud: !globalLaunchConfig.metalHud });
+        } else if (focusedContentIndex === 5 + idxOffset) {
+          updateGlobalLaunchConfig({ phoneMotion: !globalLaunchConfig.phoneMotion });
+        }
+      } else if (activeSection === 'controllers') {
+        if (dir === 'left' && focusedContentIndex > 1) {
+          const nextIdx = focusedContentIndex - 1;
+          setFocusedContentIndex(nextIdx);
+          handleDeadzoneChange(nextIdx === 1 ? 10 : 15);
+        } else if (dir === 'right' && focusedContentIndex >= 1 && focusedContentIndex < 3) {
+          const nextIdx = focusedContentIndex + 1;
+          setFocusedContentIndex(nextIdx);
+          handleDeadzoneChange(nextIdx === 2 ? 15 : 20);
+        }
+      }
+    },
+    [
+      activeSection,
+      liveContainerStatus.isLinked,
+      focusedContentIndex,
+      handleToggleDirectBoot,
+      isDirectBootEnabled,
+      updateGlobalLaunchConfig,
+      globalLaunchConfig,
+      handleDeadzoneChange,
+    ]
+  );
+
+  const handleGamepadDirection = React.useCallback(
+    (dir: 'left' | 'right' | 'up' | 'down') => {
+      if (activeSection === 'controllers' && isControllerTestActive) {
+        return;
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+      if (focusZone === 'sidebar') {
+        const currentIdx = SECTIONS.indexOf(activeSection);
+        if (isLandscape) {
+          if (dir === 'up') {
+            const nextIdx = Math.max(0, currentIdx - 1);
+            setActiveSection(SECTIONS[nextIdx]);
+            setFocusedContentIndex(0);
+          } else if (dir === 'down') {
+            const nextIdx = Math.min(SECTIONS.length - 1, currentIdx + 1);
+            setActiveSection(SECTIONS[nextIdx]);
+            setFocusedContentIndex(0);
+          } else if (dir === 'right') {
+            setFocusZone('content');
+            setFocusedContentIndex(0);
+          }
+        } else {
+          // Portrait: horizontal sidebar
+          if (dir === 'left') {
+            const nextIdx = Math.max(0, currentIdx - 1);
+            setActiveSection(SECTIONS[nextIdx]);
+            setFocusedContentIndex(0);
+          } else if (dir === 'right') {
+            const nextIdx = Math.min(SECTIONS.length - 1, currentIdx + 1);
+            setActiveSection(SECTIONS[nextIdx]);
+            setFocusedContentIndex(0);
+          } else if (dir === 'down') {
+            setFocusZone('content');
+            setFocusedContentIndex(0);
+          }
+        }
+      } else {
+        // focusZone === 'content'
+        const maxItems = getContentItemCount();
+        if (dir === 'up') {
+          if (focusedContentIndex === 0) {
+            if (!isLandscape) {
+              setFocusZone('sidebar');
+            }
+          } else {
+            setFocusedContentIndex((prev) => Math.max(0, prev - 1));
+          }
+        } else if (dir === 'down') {
+          setFocusedContentIndex((prev) => Math.min(maxItems - 1, prev + 1));
+        } else if (dir === 'left') {
+          const idxOffset = liveContainerStatus.isLinked ? 1 : 0;
+          const isHorizontalLiveItem =
+            activeSection === 'livecontainer' &&
+            [2 + idxOffset, 3 + idxOffset, 4 + idxOffset, 5 + idxOffset].includes(focusedContentIndex);
+          const isHorizontalControllerItem =
+            activeSection === 'controllers' && focusedContentIndex >= 1 && focusedContentIndex <= 3;
+
+          if (isHorizontalLiveItem || isHorizontalControllerItem) {
+            handleContentLeftRight('left');
+          } else if (isLandscape) {
+            setFocusZone('sidebar');
+          }
+        } else if (dir === 'right') {
+          handleContentLeftRight('right');
+        }
+      }
+    },
+    [
+      activeSection,
+      isControllerTestActive,
+      focusZone,
+      isLandscape,
+      SECTIONS,
+      getContentItemCount,
+      focusedContentIndex,
+      liveContainerStatus.isLinked,
+      handleContentLeftRight,
+    ]
+  );
+
+  const handleGamepadButtonPress = React.useCallback(
+    (button: ControllerButton) => {
+      if (activeSection === 'controllers' && isControllerTestActive) {
+        if (button === 'B') {
+          const now = Date.now();
+          if (now - lastBTapTimeRef.current < 750) {
+            setControllerTestActive(false);
+            return;
+          }
+          lastBTapTimeRef.current = now;
+        }
+        return;
+      }
+
+      if (button === 'B') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        if (focusZone === 'content') {
+          setFocusZone('sidebar');
+        } else {
+          onBackPress?.();
+        }
+      } else if (button === 'A') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        if (focusZone === 'sidebar') {
+          setFocusZone('content');
+          setFocusedContentIndex(0);
+        } else {
+          executeContentAction(focusedContentIndex);
+        }
+      }
+    },
+    [
+      activeSection,
+      isControllerTestActive,
+      focusZone,
+      onBackPress,
+      executeContentAction,
+      focusedContentIndex,
+      setControllerTestActive,
+    ]
+  );
+
+  const { controllers, activeController, isConnected, lastPressedButton } = useGamepad({
+    onDirection: handleGamepadDirection,
+    onButtonPress: handleGamepadButtonPress,
+  });
+
   const currentLang = i18n.language;
 
   const renderSidebarItem = (id: SettingsSection, label: string) => {
     const isSelected = activeSection === id;
+    const isSidebarFocused = focusZone === 'sidebar' && isSelected;
     return (
       <Pressable
         key={id}
         style={({ pressed }) => [
           styles.menuItem,
-          isSelected ? [styles.menuItemSelected, { borderColor: colors.accent }] : styles.menuItemDefault,
+          isSelected
+            ? [
+                styles.menuItemSelected,
+                { borderColor: isSidebarFocused ? colors.accent : colors.border },
+                isSidebarFocused && styles.menuItemSelectedGlow,
+              ]
+            : styles.menuItemDefault,
           pressed && styles.menuItemPressed,
         ]}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
           setActiveSection(id);
+          setFocusZone('sidebar');
+          setFocusedContentIndex(0);
         }}
         accessibilityRole="tab"
         accessibilityState={{ selected: isSelected }}
       >
         {isSelected && (
-          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+          <View
+            style={[
+              styles.selectedAccentTick,
+              { backgroundColor: isSidebarFocused ? colors.accentStrong : colors.textSecondary },
+            ]}
+          />
         )}
         <Text
           style={[
@@ -320,6 +673,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <View style={[styles.bodyLayout, isLandscape && styles.bodyLayoutLandscape]}>
         {/* Left Sidebar Menu */}
         <ScrollView
+          ref={sidebarScrollRef}
           horizontal={!isLandscape}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
@@ -364,6 +718,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         {/* Right Detail Content Panel */}
         <ScrollView
+          ref={detailScrollRef}
           style={[styles.detailPanel, { backgroundColor: colors.background }]}
           contentContainerStyle={[
             styles.detailContent,
@@ -394,8 +749,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </View>
                 <Pressable
                   accessibilityRole="link"
+                  style={[
+                    styles.supportLinkWrap,
+                    focusZone === 'content' && focusedContentIndex === 0 && [styles.focusedContentCard, { borderColor: colors.accent }],
+                  ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                    setFocusedContentIndex(0);
                     Linking.openURL('https://github.com/CesarGarza55/NXHorizon').catch(() => { });
                   }}
                 >
@@ -414,12 +774,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   style={({ pressed }) => [
                     styles.openGuideBtn,
                     { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
+                    focusZone === 'content' && focusedContentIndex === 1 && [styles.focusedContentCard, { borderColor: colors.accent }],
                     pressed && styles.openGuideBtnPressed,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel={t('settings.viewOnboardingBtn')}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                    setFocusedContentIndex(1);
                     onShowOnboarding?.();
                   }}
                 >
@@ -477,32 +839,44 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   ['system', 'settings.themeSystem'],
                   ['light', 'settings.themeLight'],
                   ['dark', 'settings.themeDark'],
-                ] as const).map(([mode, label], index) => (
-                  <Pressable
-                    key={mode}
-                    style={[
-                      styles.optionRow,
-                      index < 2 && styles.optionRowBorder,
-                      { borderBottomColor: colors.border },
-                    ]}
-                    onPress={() => handleThemeChange(mode)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: themeMode === mode }}
-                  >
-                    <Text
+                ] as const).map(([mode, label], index) => {
+                  const isFocused = focusZone === 'content' && focusedContentIndex === index;
+                  return (
+                    <Pressable
+                      key={mode}
                       style={[
-                        styles.optionLabel,
-                        { color: colors.text },
-                        themeMode === mode && { color: colors.accentStrong, fontWeight: '700' },
+                        styles.optionRow,
+                        index < 2 && styles.optionRowBorder,
+                        { borderBottomColor: colors.border },
+                        isFocused && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
                       ]}
+                      onPress={() => {
+                        setFocusedContentIndex(index);
+                        handleThemeChange(mode);
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: themeMode === mode }}
                     >
-                      {t(label)}
-                    </Text>
-                    {themeMode === mode && (
-                      <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
-                    )}
-                  </Pressable>
-                ))}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isFocused && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text
+                          style={[
+                            styles.optionLabel,
+                            { color: colors.text },
+                            (themeMode === mode || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                          ]}
+                        >
+                          {t(label)}
+                        </Text>
+                      </View>
+                      {themeMode === mode && (
+                        <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -516,49 +890,49 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </Text>
 
               <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={() => handleLanguageChange('auto')}
-                >
-                  <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.languageSystem')}</Text>
-                  <Ionicons name="sparkles" size={16} color={colors.accent} />
-                </Pressable>
-
-                <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={() => handleLanguageChange('es')}
-                >
-                  <Text
-                    style={[
-                      styles.optionLabel,
-                      { color: colors.text },
-                      currentLang.startsWith('es') && { color: colors.accentStrong, fontWeight: '700' },
-                    ]}
-                  >
-                    Español
-                  </Text>
-                  {currentLang.startsWith('es') && (
-                    <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
-                  )}
-                </Pressable>
-
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => handleLanguageChange('en')}
-                >
-                  <Text
-                    style={[
-                      styles.optionLabel,
-                      { color: colors.text },
-                      currentLang.startsWith('en') && { color: colors.accentStrong, fontWeight: '700' },
-                    ]}
-                  >
-                    English
-                  </Text>
-                  {currentLang.startsWith('en') && (
-                    <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
-                  )}
-                </Pressable>
+                {[
+                  { id: 'auto' as SupportedLanguage, label: t('settings.languageSystem'), isSelected: false, isSparkle: true },
+                  { id: 'es' as SupportedLanguage, label: 'Español', isSelected: currentLang.startsWith('es'), isSparkle: false },
+                  { id: 'en' as SupportedLanguage, label: 'English', isSelected: currentLang.startsWith('en'), isSparkle: false },
+                ].map((item, index) => {
+                  const isFocused = focusZone === 'content' && focusedContentIndex === index;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[
+                        styles.optionRow,
+                        index < 2 && styles.optionRowBorder,
+                        { borderBottomColor: colors.border },
+                        isFocused && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                      ]}
+                      onPress={() => {
+                        setFocusedContentIndex(index);
+                        handleLanguageChange(item.id);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isFocused && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text
+                          style={[
+                            styles.optionLabel,
+                            { color: colors.text },
+                            (item.isSelected || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      {item.isSelected && (
+                        <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+                      )}
+                      {!item.isSelected && item.isSparkle && (
+                        <Ionicons name="sparkles" size={16} color={colors.accent} />
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -568,35 +942,47 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <View style={styles.sectionContainer}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('settings.orientationTitle')}</Text>
               <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={() => handleOrientationChange('auto')}
-                >
-                  <Text style={[styles.optionLabel, { color: colors.text }, orientationMode === 'auto' && { color: colors.accentStrong, fontWeight: '700' }]}>
-                    {t('settings.orientationAuto')}
-                  </Text>
-                  {orientationMode === 'auto' && <Ionicons name="checkmark-circle" size={18} color={colors.accent} />}
-                </Pressable>
-
-                <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={() => handleOrientationChange('landscape')}
-                >
-                  <Text style={[styles.optionLabel, { color: colors.text }, orientationMode === 'landscape' && { color: colors.accentStrong, fontWeight: '700' }]}>
-                    {t('settings.orientationLandscape')}
-                  </Text>
-                  {orientationMode === 'landscape' && <Ionicons name="checkmark-circle" size={18} color={colors.accent} />}
-                </Pressable>
-
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => handleOrientationChange('portrait')}
-                >
-                  <Text style={[styles.optionLabel, { color: colors.text }, orientationMode === 'portrait' && { color: colors.accentStrong, fontWeight: '700' }]}>
-                    {t('settings.orientationPortrait')}
-                  </Text>
-                  {orientationMode === 'portrait' && <Ionicons name="checkmark-circle" size={18} color={colors.accent} />}
-                </Pressable>
+                {[
+                  { id: 'auto' as const, label: t('settings.orientationAuto') },
+                  { id: 'landscape' as const, label: t('settings.orientationLandscape') },
+                  { id: 'portrait' as const, label: t('settings.orientationPortrait') },
+                ].map((item, index) => {
+                  const isFocused = focusZone === 'content' && focusedContentIndex === index;
+                  const isSelected = orientationMode === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[
+                        styles.optionRow,
+                        index < 2 && styles.optionRowBorder,
+                        { borderBottomColor: colors.border },
+                        isFocused && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                      ]}
+                      onPress={() => {
+                        setFocusedContentIndex(index);
+                        handleOrientationChange(item.id);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isFocused && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text
+                          style={[
+                            styles.optionLabel,
+                            { color: colors.text },
+                            (isSelected || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -623,9 +1009,26 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     {t('settings.gamepadName', { name: activeController.vendorName })}
                   </Text>
                   <Text style={[styles.metaLine, { color: colors.textSecondary }]}>
-                    {activeController.batteryLevel !== null
-                      ? t('settings.batteryLevel', { percent: activeController.batteryLevel })
-                      : t('settings.batteryUnknown')}
+                    {typeof activeController.batteryLevel === 'number' ? (
+                      <>
+                        {t('settings.batteryLevel', { percent: activeController.batteryLevel }).split(activeController.batteryLevel.toString())[0]}
+                        <Text
+                          style={{
+                            color:
+                              activeController.batteryLevel <= 10
+                                ? '#FF3B30'
+                                : activeController.batteryLevel <= 20
+                                ? '#FF9500'
+                                : colors.text,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {activeController.batteryLevel}%
+                        </Text>
+                      </>
+                    ) : (
+                      t('settings.batteryUnknown')
+                    )}
                   </Text>
                 </View>
               )}
@@ -641,9 +1044,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         backgroundColor: isControllerTestActive ? colors.accentSurface : colors.surfaceSecondary,
                         borderColor: isControllerTestActive ? colors.accent : colors.border,
                       },
+                      focusZone === 'content' && focusedContentIndex === 0 && [styles.focusedContentCard, { borderColor: colors.accent }],
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      setFocusedContentIndex(0);
                       setControllerTestActive(!isControllerTestActive);
                     }}
                   >
@@ -671,276 +1076,412 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
               {/* Deadzone selector */}
               <Text style={[styles.deadzoneTitle, { color: colors.textSecondary }]}>{t('settings.deadzone')}</Text>
+              <Text style={[styles.deadzoneDesc, { color: colors.textMuted }]}>
+                {t('settings.deadzoneDesc')}
+              </Text>
               <View style={styles.deadzoneRow}>
-                {[10, 15, 20].map((val) => (
-                  <Pressable
-                    key={val}
-                    style={[
-                      styles.deadzoneChip,
-                      { backgroundColor: colors.surface, borderColor: colors.border },
-                      currentDeadzone === val && { borderColor: colors.accent, backgroundColor: colors.accentSurface },
-                    ]}
-                    onPress={() => handleDeadzoneChange(val)}
-                  >
-                    <Text
+                {[10, 15, 20].map((val, idx) => {
+                  const chipIndex = idx + 1;
+                  const isFocused = focusZone === 'content' && focusedContentIndex === chipIndex;
+                  return (
+                    <Pressable
+                      key={val}
                       style={[
-                        styles.deadzoneChipText,
-                        { color: colors.textSecondary },
-                        currentDeadzone === val && { color: colors.accentStrong, fontWeight: '700' },
+                        styles.deadzoneChip,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        currentDeadzone === val && { borderColor: colors.accent, backgroundColor: colors.accentSurface },
+                        isFocused && [styles.focusedContentCard, { borderColor: colors.accent }],
                       ]}
+                      onPress={() => {
+                        setFocusedContentIndex(chipIndex);
+                        handleDeadzoneChange(val);
+                      }}
                     >
-                      {t('settings.deadzoneValue', { value: val })}
-                    </Text>
-                  </Pressable>
-                ))}
+                      <Text
+                        style={[
+                          styles.deadzoneChipText,
+                          { color: colors.textSecondary },
+                          (currentDeadzone === val || isFocused) && { color: colors.accentStrong, fontWeight: '700' },
+                        ]}
+                      >
+                        {t('settings.deadzoneValue', { value: val })}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           )}
 
           {/* SECTION: LiveContainer */}
-          {activeSection === 'livecontainer' && (
-            <View style={styles.sectionContainer}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>LiveContainer</Text>
-              <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-                {t('settings.livecontainerDesc')}
-              </Text>
+          {activeSection === 'livecontainer' && (() => {
+            const idxOffset = liveContainerStatus.isLinked ? 1 : 0;
+            return (
+              <View style={styles.sectionContainer}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>LiveContainer</Text>
+                <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+                  {t('settings.livecontainerDesc')}
+                </Text>
 
-              <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.status')}</Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {liveContainerStatus.isLinked
-                        ? t('settings.livecontainerStatusLinked', { folder: liveContainerStatus.folderName })
-                        : t('settings.livecontainerStatusUnlinked')}
-                    </Text>
+                <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={[styles.optionLabel, { color: colors.text }]}>{t('settings.status')}</Text>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {liveContainerStatus.isLinked
+                          ? t('settings.livecontainerStatusLinked', { folder: liveContainerStatus.folderName })
+                          : t('settings.livecontainerStatusUnlinked')}
+                      </Text>
+                    </View>
+                    <View style={[styles.badge, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]}>
+                      <Text style={[styles.badgeText, { color: colors.accentStrong }]}>
+                        {liveContainerStatus.isLinked ? t('settings.livecontainerStatusLinkedBadge') : t('settings.livecontainerStatusUnlinkedBadge')}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.badge, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.badgeText, { color: colors.accentStrong }]}>
-                      {liveContainerStatus.isLinked ? t('settings.livecontainerStatusLinkedBadge') : t('settings.livecontainerStatusUnlinkedBadge')}
-                    </Text>
-                  </View>
-                </View>
 
-                <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={handleLinkLiveContainer}
-                >
-                  <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
-                    {liveContainerStatus.isLinked
-                      ? t('settings.changeLiveContainerFolder')
-                      : t('settings.linkLiveContainer')}
-                  </Text>
-                  <Ionicons name="folder-open-outline" size={18} color={colors.accentStrong} />
-                </Pressable>
-
-                {liveContainerStatus.isLinked && (
                   <Pressable
-                    style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                    onPress={handleUnlinkLiveContainer}
+                    style={[
+                      styles.optionRow,
+                      styles.optionRowBorder,
+                      { borderBottomColor: colors.border },
+                      focusZone === 'content' && focusedContentIndex === 0 && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(0);
+                      handleLinkLiveContainer();
+                    }}
                   >
-                    <Text style={[styles.optionLabel, { color: colors.destructive }]}>
-                      {t('settings.unlinkLiveContainer')}
-                    </Text>
-                    <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {focusZone === 'content' && focusedContentIndex === 0 && (
+                        <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                      )}
+                      <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
+                        {liveContainerStatus.isLinked
+                          ? t('settings.changeLiveContainerFolder')
+                          : t('settings.linkLiveContainer')}
+                      </Text>
+                    </View>
+                    <Ionicons name="folder-open-outline" size={18} color={colors.accentStrong} />
                   </Pressable>
-                )}
 
-                <View style={styles.optionRow}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('settings.directBootTitle')}
-                    </Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {t('settings.directBootDesc')}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={isDirectBootEnabled}
-                    onValueChange={handleToggleDirectBoot}
-                    trackColor={{ false: colors.border, true: colors.accent }}
-                    thumbColor={colors.surface}
-                  />
-                </View>
-              </View>
-
-              {/* Emulation & Performance Defaults Card */}
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>
-                {t('settings.performanceDefaultsTitle')}
-              </Text>
-              <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-                {t('settings.performanceDefaultsDesc')}
-              </Text>
-
-              <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {/* Console Mode */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.modeHeading')}
-                    </Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {globalLaunchConfig.opMode === 'handheld' ? `${t('gameConfig.modeHandheld')} (720p)` : `${t('gameConfig.modeDocked')} (1080p)`}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {liveContainerStatus.isLinked && (
                     <Pressable
                       style={[
-                        styles.badge,
-                        globalLaunchConfig.opMode === 'handheld'
-                          ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
-                          : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+                        styles.optionRow,
+                        styles.optionRowBorder,
+                        { borderBottomColor: colors.border },
+                        focusZone === 'content' && focusedContentIndex === 1 && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
                       ]}
                       onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                        updateGlobalLaunchConfig({ opMode: 'handheld' });
+                        setFocusedContentIndex(1);
+                        handleUnlinkLiveContainer();
                       }}
                     >
-                      <Text
-                        style={[
-                          styles.badgeText,
-                          {
-                            color: globalLaunchConfig.opMode === 'handheld' ? colors.accentStrong : colors.textSecondary,
-                            fontWeight: globalLaunchConfig.opMode === 'handheld' ? '700' : '500',
-                          },
-                        ]}
-                      >
-                        {t('gameConfig.modeHandheld')}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === 1 && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.destructive }]}>
+                          {t('settings.unlinkLiveContainer')}
+                        </Text>
+                      </View>
+                      <Ionicons name="trash-outline" size={18} color={colors.destructive} />
                     </Pressable>
+                  )}
 
-                    <Pressable
-                      style={[
-                        styles.badge,
-                        globalLaunchConfig.opMode === 'docked'
-                          ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
-                          : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                        updateGlobalLaunchConfig({ opMode: 'docked' });
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.badgeText,
-                          {
-                            color: globalLaunchConfig.opMode === 'docked' ? colors.accentStrong : colors.textSecondary,
-                            fontWeight: globalLaunchConfig.opMode === 'docked' ? '700' : '500',
-                          },
-                        ]}
-                      >
-                        {t('gameConfig.modeDocked')}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      focusZone === 'content' && focusedContentIndex === (1 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(1 + idxOffset);
+                      handleToggleDirectBoot(!isDirectBootEnabled);
+                    }}
+                  >
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (1 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {t('settings.directBootTitle')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {t('settings.directBootDesc')}
                       </Text>
-                    </Pressable>
-                  </View>
+                    </View>
+                    <Switch
+                      value={isDirectBootEnabled}
+                      onValueChange={handleToggleDirectBoot}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                      thumbColor={colors.surface}
+                    />
+                  </Pressable>
                 </View>
 
-                {/* FPS Target */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.fpsHeading')}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {[
-                      { val: 0, label: 'Auto' },
-                      { val: 30, label: '30' },
-                      { val: 60, label: '60' },
-                    ].map((item) => {
-                      const isActive = globalLaunchConfig.fpsTarget === item.val;
-                      return (
-                        <Pressable
-                          key={item.val}
+                {/* Emulation & Performance Defaults Card */}
+                <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>
+                  {t('settings.performanceDefaultsTitle')}
+                </Text>
+                <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+                  {t('settings.performanceDefaultsDesc')}
+                </Text>
+
+                <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  {/* Console Mode */}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      styles.optionRowBorder,
+                      { borderBottomColor: colors.border },
+                      focusZone === 'content' && focusedContentIndex === (2 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(2 + idxOffset);
+                      const nextMode = globalLaunchConfig.opMode === 'handheld' ? 'docked' : 'handheld';
+                      updateGlobalLaunchConfig({ opMode: nextMode });
+                    }}
+                  >
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (2 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {t('gameConfig.modeHeading')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {globalLaunchConfig.opMode === 'handheld' ? `${t('gameConfig.modeHandheld')} (720p)` : `${t('gameConfig.modeDocked')} (1080p)`}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <Pressable
+                        style={[
+                          styles.badge,
+                          globalLaunchConfig.opMode === 'handheld'
+                            ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
+                            : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+                        ]}
+                        onPress={() => {
+                          setFocusedContentIndex(2 + idxOffset);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                          updateGlobalLaunchConfig({ opMode: 'handheld' });
+                        }}
+                      >
+                        <Text
                           style={[
-                            styles.badge,
-                            isActive
-                              ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
-                              : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+                            styles.badgeText,
+                            {
+                              color: globalLaunchConfig.opMode === 'handheld' ? colors.accentStrong : colors.textSecondary,
+                              fontWeight: globalLaunchConfig.opMode === 'handheld' ? '700' : '500',
+                            },
                           ]}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                            updateGlobalLaunchConfig({ fpsTarget: item.val as 0 | 30 | 60 });
-                          }}
                         >
-                          <Text
+                          {t('gameConfig.modeHandheld')}
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[
+                          styles.badge,
+                          globalLaunchConfig.opMode === 'docked'
+                            ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
+                            : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+                        ]}
+                        onPress={() => {
+                          setFocusedContentIndex(2 + idxOffset);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                          updateGlobalLaunchConfig({ opMode: 'docked' });
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.badgeText,
+                            {
+                              color: globalLaunchConfig.opMode === 'docked' ? colors.accentStrong : colors.textSecondary,
+                              fontWeight: globalLaunchConfig.opMode === 'docked' ? '700' : '500',
+                            },
+                          ]}
+                        >
+                          {t('gameConfig.modeDocked')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </Pressable>
+
+                  {/* FPS Target */}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      styles.optionRowBorder,
+                      { borderBottomColor: colors.border },
+                      focusZone === 'content' && focusedContentIndex === (3 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(3 + idxOffset);
+                      const nextFps = globalLaunchConfig.fpsTarget === 0 ? 30 : globalLaunchConfig.fpsTarget === 30 ? 60 : 0;
+                      updateGlobalLaunchConfig({ fpsTarget: nextFps });
+                    }}
+                  >
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (3 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {t('gameConfig.fpsHeading')}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      {[
+                        { val: 0, label: 'Auto' },
+                        { val: 30, label: '30' },
+                        { val: 60, label: '60' },
+                      ].map((item) => {
+                        const isActive = globalLaunchConfig.fpsTarget === item.val;
+                        return (
+                          <Pressable
+                            key={item.val}
                             style={[
-                              styles.badgeText,
-                              {
-                                color: isActive ? colors.accentStrong : colors.textSecondary,
-                                fontWeight: isActive ? '700' : '500',
-                              },
+                              styles.badge,
+                              isActive
+                                ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
+                                : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
                             ]}
+                            onPress={() => {
+                              setFocusedContentIndex(3 + idxOffset);
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                              updateGlobalLaunchConfig({ fpsTarget: item.val as 0 | 30 | 60 });
+                            }}
                           >
-                            {item.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                            <Text
+                              style={[
+                                styles.badgeText,
+                                {
+                                  color: isActive ? colors.accentStrong : colors.textSecondary,
+                                  fontWeight: isActive ? '700' : '500',
+                                },
+                              ]}
+                            >
+                              {item.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </Pressable>
 
-                {/* Metal Performance HUD Toggle */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.metalHudTitle')}
-                    </Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {t('gameConfig.metalHudDesc')}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={globalLaunchConfig.metalHud}
-                    onValueChange={(val) => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                      updateGlobalLaunchConfig({ metalHud: val });
+                  {/* Metal Performance HUD Toggle */}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      styles.optionRowBorder,
+                      { borderBottomColor: colors.border },
+                      focusZone === 'content' && focusedContentIndex === (4 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(4 + idxOffset);
+                      updateGlobalLaunchConfig({ metalHud: !globalLaunchConfig.metalHud });
                     }}
-                    trackColor={{ false: colors.border, true: colors.accent }}
-                    thumbColor={colors.surface}
-                  />
-                </View>
+                  >
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (4 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {t('gameConfig.metalHudTitle')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {t('gameConfig.metalHudDesc')}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={globalLaunchConfig.metalHud}
+                      onValueChange={(val) => {
+                        setFocusedContentIndex(4 + idxOffset);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                        updateGlobalLaunchConfig({ metalHud: val });
+                      }}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                      thumbColor={colors.surface}
+                    />
+                  </Pressable>
 
-                {/* Gyroscope Motion Toggle */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.motionTitle')}
-                    </Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {t('gameConfig.motionDesc')}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={globalLaunchConfig.phoneMotion}
-                    onValueChange={(val) => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                      updateGlobalLaunchConfig({ phoneMotion: val });
+                  {/* Gyroscope Motion Toggle */}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      styles.optionRowBorder,
+                      { borderBottomColor: colors.border },
+                      focusZone === 'content' && focusedContentIndex === (5 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(5 + idxOffset);
+                      updateGlobalLaunchConfig({ phoneMotion: !globalLaunchConfig.phoneMotion });
                     }}
-                    trackColor={{ false: colors.border, true: colors.accent }}
-                    thumbColor={colors.surface}
-                  />
-                </View>
+                  >
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (5 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.text }]}>
+                          {t('gameConfig.motionTitle')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {t('gameConfig.motionDesc')}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={globalLaunchConfig.phoneMotion}
+                      onValueChange={(val) => {
+                        setFocusedContentIndex(5 + idxOffset);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                        updateGlobalLaunchConfig({ phoneMotion: val });
+                      }}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                      thumbColor={colors.surface}
+                    />
+                  </Pressable>
 
-                {/* Apply Defaults to All Games Button */}
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={handleApplyDefaultsToAll}
-                >
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
-                      {t('settings.applyDefaultsToAllGames')}
-                    </Text>
-                    <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {t('settings.applyDefaultsToAllGamesDesc')}
-                    </Text>
-                  </View>
-                  <Ionicons name="sparkles" size={18} color={colors.accentStrong} />
-                </Pressable>
+                  {/* Apply Defaults to All Games Button */}
+                  <Pressable
+                    style={[
+                      styles.optionRow,
+                      focusZone === 'content' && focusedContentIndex === (6 + idxOffset) && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(6 + idxOffset);
+                      handleApplyDefaultsToAll();
+                    }}
+                  >
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {focusZone === 'content' && focusedContentIndex === (6 + idxOffset) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                        <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
+                          {t('settings.applyDefaultsToAllGames')}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
+                        {t('settings.applyDefaultsToAllGamesDesc')}
+                      </Text>
+                    </View>
+                    <Ionicons name="sparkles" size={18} color={colors.accentStrong} />
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
 
           {/* SECTION: Storage & Cache */}
           {activeSection === 'storage' && (
@@ -948,18 +1489,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('settings.storage')}</Text>
               <View style={[styles.optionsList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Pressable
-                  style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}
-                  onPress={handleClearCache}
+                  style={[
+                    styles.optionRow,
+                    styles.optionRowBorder,
+                    { borderBottomColor: colors.border },
+                    focusZone === 'content' && focusedContentIndex === 0 && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                  ]}
+                  onPress={() => {
+                    setFocusedContentIndex(0);
+                    handleClearCache();
+                  }}
                 >
-                  <Text style={[styles.optionLabel, { color: colors.text }]}>
-                    {t('settings.clearCoverCache')}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {focusZone === 'content' && focusedContentIndex === 0 && (
+                      <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                    )}
+                    <Text style={[styles.optionLabel, { color: colors.text }]}>
+                      {t('settings.clearCoverCache')}
+                    </Text>
+                  </View>
                   <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
                 </Pressable>
 
                 <Pressable
-                  style={styles.optionRow}
+                  style={[
+                    styles.optionRow,
+                    focusZone === 'content' && focusedContentIndex === 1 && [styles.focusedOptionRow, { backgroundColor: colors.accentSurface, borderColor: colors.accent }],
+                  ]}
                   onPress={() => {
+                    setFocusedContentIndex(1);
                     Alert.alert(
                       t('common.delete'),
                       t('settings.resetLibraryConfirm'),
@@ -970,9 +1528,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     );
                   }}
                 >
-                  <Text style={[styles.optionLabel, { color: colors.destructive }]}>
-                    {t('settings.resetLibrary')}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {focusZone === 'content' && focusedContentIndex === 1 && (
+                      <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                    )}
+                    <Text style={[styles.optionLabel, { color: colors.destructive }]}>
+                      {t('settings.resetLibrary')}
+                    </Text>
+                  </View>
                   <Ionicons name="refresh-outline" size={18} color={colors.destructive} />
                 </Pressable>
               </View>
@@ -1045,8 +1608,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         </Text>
                       ) : null}
                       <Pressable
-                        style={[styles.downloadBtn, { backgroundColor: colors.accent }]}
+                        style={[
+                          styles.downloadBtn,
+                          { backgroundColor: colors.accent },
+                          focusZone === 'content' && focusedContentIndex === 0 && [styles.focusedContentCard, { borderColor: colors.accent }],
+                        ]}
                         onPress={() => {
+                          setFocusedContentIndex(0);
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                           if (latestRelease.downloadUrl) {
                             Linking.openURL(latestRelease.downloadUrl).catch(() => {});
@@ -1068,8 +1636,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   )}
 
                   <Pressable
-                    style={styles.checkUpdatesBtnRow}
-                    onPress={handleCheckForUpdates}
+                    style={[
+                      styles.checkUpdatesBtnRow,
+                      focusZone === 'content' &&
+                        focusedContentIndex === (updateStatus === 'update_available' ? 1 : 0) && [
+                          styles.focusedContentCard,
+                          { borderColor: colors.accent, paddingHorizontal: 8, paddingVertical: 4 },
+                        ],
+                    ]}
+                    onPress={() => {
+                      setFocusedContentIndex(updateStatus === 'update_available' ? 1 : 0);
+                      handleCheckForUpdates();
+                    }}
                     disabled={updateStatus === 'checking'}
                   >
                     <Ionicons
@@ -1182,17 +1760,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </View>
 
                 <Pressable
-                  style={styles.optionRow}
+                  style={[
+                    styles.optionRow,
+                    focusZone === 'content' &&
+                      focusedContentIndex === (updateStatus === 'update_available' ? 2 : 1) && [
+                        styles.focusedOptionRow,
+                        { backgroundColor: colors.accentSurface, borderColor: colors.accent },
+                      ],
+                  ]}
                   accessibilityRole="link"
                   onPress={() => {
+                    setFocusedContentIndex(updateStatus === 'update_available' ? 2 : 1);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
                     Linking.openURL('https://github.com/CesarGarza55/NXHorizon').catch(() => { });
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
-                      {t('settings.aboutRepoLabel')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {focusZone === 'content' &&
+                        focusedContentIndex === (updateStatus === 'update_available' ? 2 : 1) && (
+                          <View style={[styles.selectedAccentTick, { backgroundColor: colors.accentStrong }]} />
+                        )}
+                      <Text style={[styles.optionLabel, { color: colors.accentStrong }]}>
+                        {t('settings.aboutRepoLabel')}
+                      </Text>
+                    </View>
                     <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
                       github.com/CesarGarza55/NXHorizon
                     </Text>
@@ -1291,6 +1883,37 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderRadius: 2,
     position: 'relative',
+  },
+  menuItemSelectedGlow: {
+    shadowColor: '#00D2FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  focusedContentCard: {
+    borderWidth: 2,
+    borderRadius: 6,
+    shadowColor: '#00D2FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  focusedOptionRow: {
+    borderWidth: 2,
+    borderRadius: 6,
+    shadowColor: '#00D2FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  supportLinkWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 4,
   },
   menuItemPressed: {
     opacity: 0.8,
@@ -1553,6 +2176,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+  },
+  deadzoneDesc: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+    marginBottom: 8,
   },
   deadzoneRow: {
     flexDirection: 'row',

@@ -55,6 +55,33 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   // Gamepad focus index: 0 = Launch, 1 = Config, 2 = Favorite, 3 = Re-identify, 4 = Delete
   const [focusedActionIdx, setFocusedActionIdx] = useState(0);
 
+  // ScrollView refs for controller auto-scrolling
+  const portraitScrollRef = React.useRef<any>(null);
+  const landscapeLeftScrollRef = React.useRef<any>(null);
+  const landscapeRightScrollRef = React.useRef<any>(null);
+  const [portraitScrollY, setPortraitScrollY] = useState(0);
+  const [landscapeRightY, setLandscapeRightY] = useState(0);
+
+  // Auto-scroll action button into view when focusedActionIdx changes
+  React.useEffect(() => {
+    if (isLandscape) {
+      let targetY = 0;
+      if (focusedActionIdx === 1) targetY = 45;
+      else if (focusedActionIdx === 2) targetY = 105;
+      else if (focusedActionIdx === 3) targetY = 165;
+      else if (focusedActionIdx === 4) targetY = 230;
+      landscapeLeftScrollRef.current?.scrollTo({ y: targetY, animated: true });
+    } else {
+      let targetY = 0;
+      if (focusedActionIdx === 1) targetY = 60;
+      else if (focusedActionIdx === 2) targetY = 120;
+      else if (focusedActionIdx === 3) targetY = 180;
+      else if (focusedActionIdx === 4) targetY = 240;
+      portraitScrollRef.current?.scrollTo({ y: targetY, animated: true });
+      setPortraitScrollY(targetY);
+    }
+  }, [focusedActionIdx, isLandscape]);
+
   // Re-identification States
   const [isReidentifyVisible, setIsReidentifyVisible] = useState(false);
   const [reidentifyQuery, setReidentifyQuery] = useState('');
@@ -195,19 +222,50 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
     [handleLaunch, onOpenConfig, game, handleOpenReidentify, handleDelete, toggleFavorite]
   );
 
-  // Full Gamepad Controls
+  // Full Gamepad Controls with auto-scroll support
   useGamepad({
     onDirection: (dir) => {
       if (selectedScreenshot) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       if (dir === 'up') {
-        setFocusedActionIdx((prev) => Math.max(0, prev - 1));
+        if (!isLandscape && portraitScrollY > 240) {
+          // If scrolled down in portrait past action buttons, scroll back up to button 4
+          portraitScrollRef.current?.scrollTo({ y: 240, animated: true });
+          setPortraitScrollY(240);
+        } else {
+          setFocusedActionIdx((prev) => Math.max(0, prev - 1));
+        }
       } else if (dir === 'down') {
-        setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+        if (focusedActionIdx < 4) {
+          setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+        } else if (!isLandscape) {
+          // In portrait, if already at button 4, pressing down scrolls the page down to view metadata/screenshots/description
+          const nextY = Math.min(portraitScrollY + 200, 1000);
+          portraitScrollRef.current?.scrollTo({ y: nextY, animated: true });
+          setPortraitScrollY(nextY);
+        }
       } else if (dir === 'left') {
-        setFocusedActionIdx((prev) => Math.max(0, prev - 1));
+        if (isLandscape) {
+          // In landscape, left scrolls right column content up
+          setLandscapeRightY((prev) => {
+            const next = Math.max(0, prev - 160);
+            landscapeRightScrollRef.current?.scrollTo({ y: next, animated: true });
+            return next;
+          });
+        } else {
+          setFocusedActionIdx((prev) => Math.max(0, prev - 1));
+        }
       } else if (dir === 'right') {
-        setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+        if (isLandscape) {
+          // In landscape, right scrolls right column content down
+          setLandscapeRightY((prev) => {
+            const next = prev + 160;
+            landscapeRightScrollRef.current?.scrollTo({ y: next, animated: true });
+            return next;
+          });
+        } else {
+          setFocusedActionIdx((prev) => Math.min(4, prev + 1));
+        }
       }
     },
     onButtonPress: (button) => {
@@ -580,6 +638,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
             ]}
           >
             <ScrollView
+              ref={landscapeLeftScrollRef}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.leftColumnScroll}
             >
@@ -617,6 +676,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
 
           {/* Right Column: Hero Banner, Metadata, Screenshots & Description */}
           <ScrollView
+            ref={landscapeRightScrollRef}
             style={styles.rightColumn}
             contentContainerStyle={[
               styles.rightColumnScroll,
@@ -627,6 +687,8 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
               },
             ]}
             showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={(e) => setLandscapeRightY(e.nativeEvent.contentOffset.y)}
           >
             {renderPendingSyncBanner()}
             {renderHeroBanner(true)}
@@ -638,6 +700,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
       ) : (
         /* Portrait Mode: Spacious vertical scroll without collisions */
         <ScrollView
+          ref={portraitScrollRef}
           style={styles.portraitScroll}
           contentContainerStyle={[
             styles.portraitScrollContent,
@@ -648,6 +711,8 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
             },
           ]}
           showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => setPortraitScrollY(e.nativeEvent.contentOffset.y)}
         >
           {renderPendingSyncBanner()}
           {renderHeroBanner(false)}
