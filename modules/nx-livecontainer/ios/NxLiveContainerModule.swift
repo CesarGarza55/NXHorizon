@@ -139,13 +139,36 @@ public class NxLiveContainerModule: Module {
 
     Function("isLinked") { () -> [String: Any] in
       let hasBookmark = UserDefaults.standard.data(forKey: self.bookmarkKey) != nil
-      let folderName = UserDefaults.standard.string(forKey: self.folderNameKey) ?? ""
-      let folderPath = UserDefaults.standard.string(forKey: self.folderPathKey) ?? ""
+      var folderName = UserDefaults.standard.string(forKey: self.folderNameKey) ?? ""
+      var folderPath = UserDefaults.standard.string(forKey: self.folderPathKey) ?? ""
+
+      if hasBookmark {
+        return [
+          "isLinked": true,
+          "folderName": folderName,
+          "folderPath": folderPath
+        ]
+      }
+
+      // Check auto-detection if running inside LiveContainer
+      if let resolved = self.resolveRootFolderUrl() {
+        if resolved.shouldStopAccess {
+          resolved.url.stopAccessingSecurityScopedResource()
+        }
+        folderName = resolved.url.lastPathComponent
+        folderPath = resolved.url.path
+        return [
+          "isLinked": true,
+          "folderName": folderName.isEmpty ? "LiveContainer (Auto)" : folderName,
+          "folderPath": folderPath,
+          "autoDetected": true
+        ]
+      }
 
       return [
-        "isLinked": hasBookmark,
-        "folderName": folderName,
-        "folderPath": folderPath
+        "isLinked": false,
+        "folderName": "",
+        "folderPath": ""
       ]
     }
 
@@ -196,19 +219,19 @@ public class NxLiveContainerModule: Module {
           return
         }
 
-        guard let bookmarkData = UserDefaults.standard.data(forKey: self.bookmarkKey) else {
-          promise.reject("ERR_NOT_LINKED", "LiveContainer root folder is not linked")
+        guard let resolved = self.resolveRootFolderUrl() else {
+          promise.reject("ERR_NOT_LINKED", "LiveContainer root folder is not linked or detected")
           return
         }
 
-        var isStale = false
-        do {
-          let rootUrl = try URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
-          guard rootUrl.startAccessingSecurityScopedResource() else {
-            promise.reject("ERR_ACCESS_DENIED", "Cannot access security-scoped LiveContainer root URL")
-            return
+        defer {
+          if resolved.shouldStopAccess {
+            resolved.url.stopAccessingSecurityScopedResource()
           }
-          defer { rootUrl.stopAccessingSecurityScopedResource() }
+        }
+
+        do {
+          let rootUrl = resolved.url
 
           guard let targetDocsUrl = self.findDocumentsDirectory(rootUrl: rootUrl, containerFolder: containerFolder) else {
             promise.reject("ERR_CONTAINER_NOT_FOUND", "Could not locate container directory for: \(containerFolder)")
@@ -292,19 +315,19 @@ public class NxLiveContainerModule: Module {
           return
         }
 
-        guard let bookmarkData = UserDefaults.standard.data(forKey: self.bookmarkKey) else {
+        guard let resolved = self.resolveRootFolderUrl() else {
           promise.resolve([:])
           return
         }
 
-        var isStale = false
-        do {
-          let rootUrl = try URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
-          guard rootUrl.startAccessingSecurityScopedResource() else {
-            promise.resolve([:])
-            return
+        defer {
+          if resolved.shouldStopAccess {
+            resolved.url.stopAccessingSecurityScopedResource()
           }
-          defer { rootUrl.stopAccessingSecurityScopedResource() }
+        }
+
+        do {
+          let rootUrl = resolved.url
 
           guard let targetDocsUrl = self.findDocumentsDirectory(rootUrl: rootUrl, containerFolder: containerFolder) else {
             promise.resolve([:])
@@ -334,6 +357,49 @@ public class NxLiveContainerModule: Module {
         }
       }
     }
+  }
+
+  private func resolveRootFolderUrl() -> (url: URL, shouldStopAccess: Bool)? {
+    let fm = FileManager.default
+
+    // 1. If user previously picked a folder via document picker, resolve security-scoped bookmark
+    if let bookmarkData = UserDefaults.standard.data(forKey: self.bookmarkKey) {
+      var isStale = false
+      if let rootUrl = try? URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale) {
+        if rootUrl.startAccessingSecurityScopedResource() {
+          return (rootUrl, true)
+        }
+      }
+    }
+
+    // 2. Auto-detection: If running directly inside LiveContainer, check direct sandbox Documents
+    if let docsUrl = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+      // Check if Documents contains Data/Application (or in parent directory)
+      let candidates = [
+        docsUrl,
+        docsUrl.deletingLastPathComponent(),
+        docsUrl.appendingPathComponent("LiveContainer")
+      ]
+
+      for candidate in candidates {
+        let dataApp = candidate.appendingPathComponent("Data/Application")
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: dataApp.path, isDirectory: &isDir), isDir.boolValue {
+          return (candidate, false)
+        }
+      }
+    }
+
+    // 3. Check saved path if present
+    if let savedPath = UserDefaults.standard.string(forKey: self.folderPathKey), !savedPath.isEmpty {
+      let pathUrl = URL(fileURLWithPath: savedPath)
+      var isDir: ObjCBool = false
+      if fm.fileExists(atPath: pathUrl.path, isDirectory: &isDir), isDir.boolValue {
+        return (pathUrl, false)
+      }
+    }
+
+    return nil
   }
 
   private func findDocumentsDirectory(rootUrl: URL, containerFolder: String) -> URL? {

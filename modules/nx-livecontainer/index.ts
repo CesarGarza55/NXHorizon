@@ -184,8 +184,6 @@ export function mapLaunchConfigToEnv(config?: Partial<GameLaunchConfig>): Record
     DM_FPS_TARGET: fpsStr,
     DM_MAX_FPS: fpsStr,
     DM_FRAME_RATE: fpsStr,
-    DM_RENDER_SCALE: String(c.renderScale),
-    DM_UPSCALER: c.upscaler,
     DM_METAL_HUD: c.metalHud ? '1' : '0',
     DM_PHONE_MOTION: c.phoneMotion ? '1' : '0',
     DM_MOTION: c.phoneMotion ? '1' : '0',
@@ -212,15 +210,6 @@ export function parseEnvToLaunchConfig(env: Record<string, string>): Partial<Gam
     if (fps === 0 || fps === 30 || fps === 60) {
       config.fpsTarget = fps as 0 | 30 | 60;
     }
-  }
-  if (env.DM_RENDER_SCALE !== undefined) {
-    const scale = parseFloat(env.DM_RENDER_SCALE);
-    if (scale === 0.5 || scale === 0.75 || scale === 1.0) {
-      config.renderScale = scale as 0.5 | 0.75 | 1.0;
-    }
-  }
-  if (env.DM_UPSCALER === 'metalfx' || env.DM_UPSCALER === 'linear') {
-    config.upscaler = env.DM_UPSCALER;
   }
   if (env.DM_METAL_HUD !== undefined) {
     config.metalHud = env.DM_METAL_HUD === '1';

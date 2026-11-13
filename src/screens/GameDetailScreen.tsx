@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { GameMetadata } from '../types/game';
+import { GameMetadata, getLocalizedDescription, getLocalizedGenre } from '../types/game';
 import { useGameStore } from '../state/useGameStore';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { useGamepad } from '../hooks/useGamepad';
@@ -43,7 +43,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   onOpenConfig,
   onRefreshMetadata,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -95,6 +95,8 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
         developer: meta.developer,
         genre: meta.genre,
         description: meta.description,
+        localizedDescriptions: meta.localizedDescriptions,
+        localizedGenres: meta.localizedGenres,
         releaseDate: meta.releaseDate,
         needsMetadataSync: meta.needsMetadataSync,
       });
@@ -486,25 +488,28 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
   };
 
   // Description Section
-  const renderDescription = () => (
-    <View style={styles.descriptionSection}>
-      <View style={styles.sectionHeaderRow}>
-        <Ionicons name="information-circle-outline" size={18} color={colors.accent} />
-        <Text style={[styles.sectionHeading, { color: colors.text }]}>
-          {t('details.aboutGame')}
+  const renderDescription = () => {
+    const localizedDesc = getLocalizedDescription(game, i18n.language);
+    return (
+      <View style={styles.descriptionSection}>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.accent} />
+          <Text style={[styles.sectionHeading, { color: colors.text }]}>
+            {t('details.aboutGame')}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.descriptionText,
+            { color: localizedDesc ? colors.textSecondary : colors.textMuted },
+            !localizedDesc && styles.emptyDescriptionText,
+          ]}
+        >
+          {localizedDesc || t('details.noDescription')}
         </Text>
       </View>
-      <Text
-        style={[
-          styles.descriptionText,
-          { color: game.description ? colors.textSecondary : colors.textMuted },
-          !game.description && styles.emptyDescriptionText,
-        ]}
-      >
-        {game.description || t('details.noDescription')}
-      </Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -589,7 +594,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
               <View style={styles.titleBlock}>
                 <View style={styles.genreRow}>
                   <Text style={[styles.genreText, { color: colors.accentStrong }]}>
-                    {(game.genre || 'Nintendo Switch').toUpperCase()}
+                    {(getLocalizedGenre(game, i18n.language) || 'Nintendo Switch').toUpperCase()}
                   </Text>
                   {game.titleId && (
                     <View style={[styles.titleIdTag, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
@@ -659,7 +664,7 @@ export const GameDetailScreen: React.FC<GameDetailScreenProps> = ({
             <View style={styles.portraitTitleBlock}>
               <View style={styles.genreRow}>
                 <Text style={[styles.genreText, { color: colors.accentStrong }]}>
-                  {(game.genre || 'Nintendo Switch').toUpperCase()}
+                  {(getLocalizedGenre(game, i18n.language) || 'Nintendo Switch').toUpperCase()}
                 </Text>
                 {game.titleId && (
                   <View style={[styles.titleIdTag, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>

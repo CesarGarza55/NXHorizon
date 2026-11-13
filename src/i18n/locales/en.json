@@ -179,6 +179,13 @@
     "livecontainerDesc": "Link the LiveContainer root folder once to skip the pre-launch settings menu and boot your games directly.",
     "livecontainerStatusLinked": "Linked folder: {{folder}}",
     "livecontainerStatusUnlinked": "Not linked",
+    "livecontainerStatusLinkedShort": "Linked",
+    "directBootStatusLabel": "Direct boot:",
+    "directBootActiveFullscreen": "Enabled (Fullscreen)",
+    "directBootDisabled": "Disabled",
+    "versionLabel": "Version:",
+    "versionValue": "1.0.0 (Horizon OS)",
+    "livecontainerStatusLinkedDesc": "Linked.",
     "linkLiveContainer": "Link LiveContainer Folder",
     "liveContainerLinkedSuccess": "LiveContainer folder linked. Direct boot was configured for your games.",
     "liveContainerLinkError": "Could not link the selected folder.",
@@ -207,7 +214,23 @@
     "aboutRepoLabel": "GitHub Repository",
     "aboutDisclaimerTitle": "Legal Disclaimer & Notice",
     "aboutDisclaimerDesc": "NX Horizon is an independent open-source frontend created for educational and preservation purposes. It is not affiliated with, endorsed by, or associated with Nintendo Co., Ltd. The software does not include or distribute copyrighted games, ROMs, keys, or proprietary assets.",
-    "version": "Version 1.0.0 (NX Horizon OS)"
+    "version": "Version 1.0.0 (NX Horizon OS)",
+    "livecontainerStatusLinkedBadge": "LINKED",
+    "livecontainerStatusUnlinkedBadge": "UNLINKED",
+    "resetLibrary": "Reset Library",
+    "resetLibraryConfirm": "Delete all games from the library? This action cannot be undone.",
+    "upToDateBadge": "UP TO DATE",
+    "updateAvailableBadge": "UPDATE AVAILABLE",
+    "checkingUpdatesBadge": "CHECKING...",
+    "checkUpdatesBtn": "Check for updates",
+    "latestVersionInstalled": "You have the latest version of NX Horizon.",
+    "newVersionAvailable": "New version {{version}} available to download.",
+    "downloadUpdate": "Download update (IPA)",
+    "developerRole": "Developer & Maintainer",
+    "controllerTestBtn": "Start button test",
+    "controllerTestFinish": "Finish test",
+    "controllerTestInstruction": "Testing active: Press any button on your controller. Hold B for 1 second to exit.",
+    "holdBToExit": "Hold B to exit"
   },
   "gamepadOverlay": {
     "connectedToast": "Controller {{name}} connected",
@@ -219,8 +242,8 @@
   },
   "onboarding": {
     "welcomeTitle": "Welcome to NX Horizon",
-    "welcomeSubtitle": "Your Horizon OS game launcher for iPhone and iPad.",
-    "welcomeDesc": "Experience the authentic Nintendo Switch interface with smooth navigation, controller support, and official high-resolution artwork.",
+    "welcomeSubtitle": "Your Nintendo Switch game library on iOS",
+    "welcomeDesc": "Experience the Nintendo Switch like interface with smooth navigation, controller support, and official high-resolution artwork.",
     "linkContainerNow": "Link LiveContainer folder",
     "linkingFolder": "Linking folder...",
     "changeLinkedFolder": "Change linked folder",
@@ -270,6 +293,10 @@
     "langAuto": "Automatic (System)",
     "resetDefaults": "Reset Defaults",
     "saveAndPlay": "Save & Play",
-    "saveError": "Failed to save game configuration"
+    "saveError": "Failed to save game configuration",
+    "toggleHint": "A: Toggle",
+    "dpadHint": "◀ ▶ D-PAD",
+    "upscalerLinear": "Linear",
+    "upscalerMetalFx": "MetalFX"
   }
 }

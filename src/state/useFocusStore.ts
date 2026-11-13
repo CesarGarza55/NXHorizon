@@ -11,6 +11,7 @@ interface FocusState {
   isGamepadActive: boolean;
   focusZone: FocusZone;
   focusedDockIndex: number;
+  isControllerTestActive: boolean;
 
   // Actions
   setContext: (context: FocusContext) => void;
@@ -19,6 +20,7 @@ interface FocusState {
   setGamepadActive: (active: boolean) => void;
   setFocusZone: (zone: FocusZone) => void;
   setFocusedDockIndex: (index: number) => void;
+  setControllerTestActive: (active: boolean) => void;
   triggerHaptic: () => void;
 }
 
@@ -29,6 +31,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   isGamepadActive: false,
   focusZone: 'carousel',
   focusedDockIndex: 2, // Default to Album/Library (center)
+  isControllerTestActive: false,
 
   setContext: (context) => set({ currentContext: context }),
   setActiveScreen: (screen) => {
@@ -68,6 +71,8 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       Haptics.selectionAsync().catch(() => {});
     }
   },
+
+  setControllerTestActive: (active) => set({ isControllerTestActive: active }),
 
   triggerHaptic: () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});

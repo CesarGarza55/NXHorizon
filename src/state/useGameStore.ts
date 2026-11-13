@@ -201,6 +201,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             developer: result.metadata.developer || g.developer,
             genre: result.metadata.genre || g.genre,
             description: result.metadata.description || g.description,
+            localizedDescriptions: result.metadata.localizedDescriptions || g.localizedDescriptions,
+            localizedGenres: result.metadata.localizedGenres || g.localizedGenres,
             releaseDate: result.metadata.releaseDate || g.releaseDate,
             needsMetadataSync: false,
           };

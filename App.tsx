@@ -75,6 +75,7 @@ function MainNavigator() {
     setFocusZone,
     focusedDockIndex,
     setFocusedDockIndex,
+    isControllerTestActive,
   } = useFocusStore();
 
   const [contextMenuGame, setContextMenuGame] = useState<GameMetadata | null>(null);
@@ -341,6 +342,10 @@ function MainNavigator() {
     }
     if (isImportModalVisible) {
       setIsImportModalVisible(false);
+      return;
+    }
+    if (activeScreen === 'settings' && isControllerTestActive) {
+      // Gamepad button test / diagnostics is active! Do NOT navigate back on B tap!
       return;
     }
     if (activeScreen === 'details') {

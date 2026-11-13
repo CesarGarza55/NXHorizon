@@ -113,8 +113,29 @@ For detailed LiveContainer instructions, see its
 The guide describes copying the URL independently of actually creating a
 shortcut.
 
-### Link the LiveContainer folder (optional)
+### Recommended Setup: Install NX Horizon inside LiveContainer
 
+> [!TIP]
+> **Best Experience:** We strongly recommend installing **NX Horizon directly inside the same LiveContainer instance** where your games are installed, rather than as a separate standalone app.
+
+When installed inside LiveContainer:
+- **Automatic Folder Linking (Zero Configuration):** Since NX Horizon shares the application sandbox directly with LiveContainer, it **automatically detects the `Data/Application` directory** on startup. You do **not** need to manually select or link folders!
+- **Seamless Launching:** The launcher transitions to your games instantly.
+
+#### Essential LiveContainer Configuration:
+
+1. **Global Settings in LiveContainer:**
+   - Open LiveContainer Settings.
+   - Enable **"Switch App Without Asking"**. This suppresses confirmation popups every time you launch a game from NX Horizon, providing a console-like experience.
+2. **App Settings for NX Horizon inside LiveContainer:**
+   - In LiveContainer's Apps list, tap or long-press **NX Horizon** to open its app settings.
+   - Enable **"Fix File Picker"**. This ensures the iOS document picker operates reliably without crashes whenever file picking is used.
+
+---
+
+### Link the LiveContainer folder (for standalone installations)
+
+If you are running NX Horizon as a standalone sideloaded app (outside LiveContainer):
 Basic launching uses the saved URL. Linking the LiveContainer folder in NX
 Horizon is optional, but enables features that read or write a game's
 configuration in its LiveContainer container.
@@ -124,7 +145,7 @@ LiveContainer → Link LiveContainer Folder**. In the iOS folder picker, select
 the LiveContainer root folder and grant access. NX Horizon stores a
 security-scoped folder reference on the device so it can locate game
 containers. You can change or unlink this folder from the same settings
-section.
+section. (Note: if installed inside LiveContainer, this is done automatically).
 
 ## Building games with NX2Apple
 
@@ -218,6 +239,30 @@ direct launching of a separately installed iOS app.
 
 Feature availability depends on the device, the generated iOS build, the
 installed LiveContainer version, and the game port.
+
+## Installing with SideStore / AltStore Source
+
+You can add NX Horizon directly to **SideStore** or **AltStore** to receive automated updates:
+
+1. In SideStore/AltStore, go to the **Sources** tab.
+2. Tap the **+** button in the top right.
+3. Add the source URL:
+   ```text
+   https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json
+   ```
+4. You can also tap this one-click link on your iOS device:
+   [Add NX Horizon to SideStore](sidestore://source?url=https://raw.githubusercontent.com/CesarGarza55/NXHorizon/main/apps.json)
+
+---
+
+## Automated GitHub Actions CI/CD
+
+NX Horizon includes an automated GitHub Actions compilation and release workflow (`.github/workflows/build-and-release.yml`):
+
+- **Automatic Version Detection:** On push to `main`, the workflow reads the version from `package.json` and checks if a corresponding Git tag (`v<version>`) already exists.
+- **On-Demand Compilation:** If a new version is detected, a `macos-14` runner compiles the unsigned IPA (`build.sh`), calculates SHA256 checksums, dynamically updates `apps.json`, and publishes an official GitHub Release with assets attached.
+
+---
 
 ## Building NX Horizon for iOS
 
@@ -313,7 +358,23 @@ metadata service when a title is added or refreshed.
 
 ## Screenshots
 
-Screenshots of the app running on a device will be added here.
+| 1. Home Carousel (Games Loaded) | 2. Register Game Modal |
+| :---: | :---: |
+| ![Home Carousel](assets/screenshots/1-home-screen.png) | ![Register Game](assets/screenshots/2-register-modal.png) |
+
+| 3. LiveContainer: Fix File Picker | 4. LiveContainer: Switch Without Asking |
+| :---: | :---: |
+| ![Fix File Picker](assets/screenshots/3-lc-fix-file-picker.png) | ![Switch Without Asking](assets/screenshots/4-lc-switch-without-asking.png) |
+
+| 5. Game Details View | 6. LiveContainer: Copy Launch URL |
+| :---: | :---: |
+| ![Game Details](assets/screenshots/5-game-details.png) | ![Copy Launch URL](assets/screenshots/6-lc-copy-launch-url.png) |
+
+| 7. Per-Game Performance Settings | 8. Console Settings & Direct Boot |
+| :---: | :---: |
+| ![Game Config](assets/screenshots/7-game-config.png) | ![Direct Boot Settings](assets/screenshots/8-settings-direct-boot.png) |
+
+> *Screenshots are stored in [`assets/screenshots/`](assets/screenshots/).*
 
 ## Contributing
 

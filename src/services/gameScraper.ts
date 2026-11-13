@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
+import i18n from '../i18n';
 import { GameMetadata } from '../types/game';
 import { SWITCH_TITLES_INDEX, findSwitchTitleInCatalog, searchCatalogCandidates, GameCatalogEntry } from './gameDatabase';
 import { parseLiveContainerUrl, LiveContainerParsedData } from './liveContainerParser';
@@ -17,12 +18,95 @@ export interface ScrapeResult {
 const NLIB_BASE = 'https://api.nlib.cc/nx';
 
 /**
+ * Resolves the query language for nlib API ('es' or 'en')
+ */
+export function getScraperLanguage(preferredLang?: string): string {
+  if (preferredLang) {
+    return preferredLang.toLowerCase().startsWith('es') ? 'es' : 'en';
+  }
+  const current = (i18n && i18n.language) ? i18n.language.toLowerCase() : '';
+  return current.startsWith('es') ? 'es' : 'en';
+}
+
+interface NlibMultiLangResult {
+  data: any;
+  localizedDescriptions: Record<string, string>;
+  localizedGenres: Record<string, string>;
+  activeLang: string;
+}
+
+/**
+ * Downloads metadata from nlib API for BOTH Spanish and English concurrently
+ */
+async function fetchNlibMetadataMultiLang(
+  titleId: string,
+  preferredLang?: string
+): Promise<NlibMultiLangResult | null> {
+  const activeLang = getScraperLanguage(preferredLang);
+  const otherLang = activeLang === 'es' ? 'en' : 'es';
+
+  try {
+    const [resActive, resOther] = await Promise.allSettled([
+      fetch(`${NLIB_BASE}/${titleId}?lang=${activeLang}`, { headers: { 'Accept': 'application/json' } }),
+      fetch(`${NLIB_BASE}/${titleId}?lang=${otherLang}`, { headers: { 'Accept': 'application/json' } }),
+    ]);
+
+    let dataActive: any = null;
+    let dataOther: any = null;
+
+    if (resActive.status === 'fulfilled' && resActive.value.ok) {
+      try {
+        dataActive = await resActive.value.json();
+      } catch (_) {}
+    }
+    if (resOther.status === 'fulfilled' && resOther.value.ok) {
+      try {
+        dataOther = await resOther.value.json();
+      } catch (_) {}
+    }
+
+    const primaryData = dataActive || dataOther;
+    if (!primaryData) return null;
+
+    const localizedDescriptions: Record<string, string> = {};
+    const localizedGenres: Record<string, string> = {};
+
+    if (dataActive) {
+      const desc = dataActive.description || dataActive.intro;
+      if (desc) localizedDescriptions[activeLang] = String(desc).trim();
+      if (Array.isArray(dataActive.category) && dataActive.category.length > 0) {
+        localizedGenres[activeLang] = dataActive.category.join(' / ');
+      }
+    }
+
+    if (dataOther) {
+      const desc = dataOther.description || dataOther.intro;
+      if (desc) localizedDescriptions[otherLang] = String(desc).trim();
+      if (Array.isArray(dataOther.category) && dataOther.category.length > 0) {
+        localizedGenres[otherLang] = dataOther.category.join(' / ');
+      }
+    }
+
+    return {
+      data: primaryData,
+      localizedDescriptions,
+      localizedGenres,
+      activeLang,
+    };
+  } catch (err) {
+    console.warn('[GameScraper] Multi-lang fetch error:', err);
+    return null;
+  }
+}
+
+/**
  * Automatically detects and scrapes official artwork and metadata
  * from Nintendo CDN/nlib API or catalog.
  */
 export async function autoDetectAndScrapeGame(
   input: string,
-  manualNameOverride?: string
+  manualNameOverride?: string,
+  langOverride?: string
 ): Promise<ScrapeResult> {
   const parsedLiveContainer: LiveContainerParsedData = parseLiveContainerUrl(input);
 
@@ -75,12 +159,10 @@ export async function autoDetectAndScrapeGame(
   // 2. If we have a Title ID, query the official Nintendo Switch REST API
   if (titleId) {
     try {
-      const response = await fetch(`${NLIB_BASE}/${titleId}`, {
-        headers: { 'Accept': 'application/json' },
-      });
+      const multiRes = await fetchNlibMetadataMultiLang(titleId, langOverride);
 
-      if (response.ok) {
-        const data = await response.json();
+      if (multiRes) {
+        const { data, localizedDescriptions, localizedGenres, activeLang } = multiRes;
         const cleanTitle = (data.name || searchName || 'Nintendo Switch Game').replace(/[™®]/g, '').trim();
         const coverUrl = `${NLIB_BASE}/${titleId}/icon`;
         const heroUrl = `${NLIB_BASE}/${titleId}/banner`;
@@ -100,6 +182,9 @@ export async function autoDetectAndScrapeGame(
           ];
         }
 
+        const activeGenre = localizedGenres[activeLang] || (Array.isArray(data.category) ? data.category.join(' / ') : 'Action / Adventure');
+        const activeDesc = localizedDescriptions[activeLang] || data.description || data.intro || `Nintendo Switch title: ${cleanTitle}`;
+
         const meta: GameMetadata = {
           id: `game_${titleId}_${Date.now()}`,
           titleId,
@@ -108,8 +193,10 @@ export async function autoDetectAndScrapeGame(
           publisher: data.publisher || 'Nintendo',
           developer: data.developer || data.publisher || 'Nintendo',
           releaseDate: data.releaseDate || new Date().toISOString().split('T')[0],
-          genre: Array.isArray(data.category) ? data.category.join(' / ') : 'Action / Adventure',
-          description: data.description || data.intro || `Nintendo Switch title: ${cleanTitle}`,
+          genre: activeGenre,
+          description: activeDesc,
+          localizedDescriptions,
+          localizedGenres,
           coverUrl,
           heroUrl,
           screenshots,
@@ -268,7 +355,8 @@ export async function scrapeGameByTitleId(
     launchUrl?: string;
     bundleName?: string;
     containerFolder?: string;
-  }
+  },
+  langOverride?: string
 ): Promise<GameMetadata> {
   const cleanId = titleId.toLowerCase().trim();
   const coverUrl = `${NLIB_BASE}/${cleanId}/icon`;
@@ -281,12 +369,10 @@ export async function scrapeGameByTitleId(
   ];
 
   try {
-    const response = await fetch(`${NLIB_BASE}/${cleanId}`, {
-      headers: { 'Accept': 'application/json' },
-    });
+    const multiRes = await fetchNlibMetadataMultiLang(cleanId, langOverride);
 
-    if (response.ok) {
-      const data = await response.json();
+    if (multiRes) {
+      const { data, localizedDescriptions, localizedGenres, activeLang } = multiRes;
       const cleanTitle = (data.name || 'Nintendo Switch Game').replace(/[™®]/g, '').trim();
 
       if (Array.isArray(data.screens?.screenshots) && data.screens.screenshots.length > 0) {
@@ -294,6 +380,9 @@ export async function scrapeGameByTitleId(
           .filter((s: any) => typeof s === 'string' && !s.endsWith('/screen/0'))
           .map((s: string) => s.replace(/^http:\/\//, 'https://'));
       }
+
+      const activeGenre = localizedGenres[activeLang] || (Array.isArray(data.category) ? data.category.join(' / ') : 'Action / Adventure');
+      const activeDesc = localizedDescriptions[activeLang] || data.description || data.intro || `Nintendo Switch title: ${cleanTitle}`;
 
       const meta: GameMetadata = {
         id: `game_${cleanId}_${Date.now()}`,
@@ -303,8 +392,10 @@ export async function scrapeGameByTitleId(
         publisher: data.publisher || 'Nintendo',
         developer: data.developer || data.publisher || 'Nintendo',
         releaseDate: data.releaseDate || new Date().toISOString().split('T')[0],
-        genre: Array.isArray(data.category) ? data.category.join(' / ') : 'Action / Adventure',
-        description: data.description || data.intro || `Nintendo Switch title: ${cleanTitle}`,
+        genre: activeGenre,
+        description: activeDesc,
+        localizedDescriptions,
+        localizedGenres,
         coverUrl,
         heroUrl,
         screenshots,

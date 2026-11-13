@@ -19,6 +19,9 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { setAppLanguage, SupportedLanguage } from '../i18n';
 import { useGamepad } from '../hooks/useGamepad';
 import { useGameStore } from '../state/useGameStore';
+import { useFocusStore } from '../state/useFocusStore';
+import { ControllerButton } from '../types/gamepad';
+import { checkForAppUpdates, AppReleaseInfo, getCurrentAppVersion } from '../services/updateService';
 import { setDeadzone } from '../../modules/nx-gamecontroller';
 import {
   pickLiveContainerFolder,
@@ -63,7 +66,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   React.useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
-  const { controllers, activeController, isConnected, lastPressedButton } = useGamepad();
+
+  const { isControllerTestActive, setControllerTestActive } = useFocusStore();
+  const lastBTapTimeRef = React.useRef<number>(0);
+
+  const handleGamepadButtonPress = React.useCallback(
+    (button: ControllerButton) => {
+      if (button === 'B' && isControllerTestActive) {
+        const now = Date.now();
+        // If user double-taps B quickly within 750ms while in test mode, exit test and exit settings
+        if (now - lastBTapTimeRef.current < 750) {
+          setControllerTestActive(false);
+          onBackPress?.();
+          return;
+        }
+        lastBTapTimeRef.current = now;
+      }
+    },
+    [isControllerTestActive, onBackPress, setControllerTestActive]
+  );
+
+  const { controllers, activeController, isConnected, lastPressedButton } = useGamepad({
+    onButtonPress: handleGamepadButtonPress,
+  });
+
+  // When activeSection is controllers, enable test mode so B button is tested without exiting
+  React.useEffect(() => {
+    if (activeSection === 'controllers') {
+      setControllerTestActive(true);
+    } else {
+      setControllerTestActive(false);
+    }
+    return () => {
+      setControllerTestActive(false);
+    };
+  }, [activeSection, setControllerTestActive]);
+
+  // Update check state
+  const [updateStatus, setUpdateStatus] = useState<
+    'idle' | 'checking' | 'up_to_date' | 'update_available' | 'error'
+  >('idle');
+  const [latestRelease, setLatestRelease] = useState<AppReleaseInfo | null>(null);
+  const hasCheckedUpdatesRef = React.useRef(false);
+
+  const handleCheckForUpdates = React.useCallback(async () => {
+    try {
+      setUpdateStatus('checking');
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      const info = await checkForAppUpdates();
+      setLatestRelease(info);
+      setUpdateStatus(info.isNewer ? 'update_available' : 'up_to_date');
+    } catch (e) {
+      console.warn('[Settings] Failed to check for app updates:', e);
+      setUpdateStatus('error');
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeSection === 'about' && !hasCheckedUpdatesRef.current) {
+      hasCheckedUpdatesRef.current = true;
+      handleCheckForUpdates();
+    }
+  }, [activeSection, handleCheckForUpdates]);
   const {
     games,
     clearAllGames,
@@ -274,12 +338,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             isLandscape
               ? styles.sidebarContentLandscape
               : [
-                  styles.sidebarContentPortrait,
-                  {
-                    paddingLeft: Math.max(insets.left, 16),
-                    paddingRight: Math.max(insets.right, 16),
-                  },
-                ]
+                styles.sidebarContentPortrait,
+                {
+                  paddingLeft: Math.max(insets.left, 16),
+                  paddingRight: Math.max(insets.right, 16),
+                },
+              ]
           }
         >
           {/* Group 1 */}
@@ -384,18 +448,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <View style={styles.statusRowItem}>
                   <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>LiveContainer:</Text>
                   <Text style={[styles.statusValue, { color: liveContainerStatus.isLinked ? colors.success : colors.textMuted }]}>
-                    {liveContainerStatus.isLinked ? (liveContainerStatus.folderName || 'Vinculado') : t('settings.livecontainerStatusUnlinked')}
+                    {liveContainerStatus.isLinked ? (liveContainerStatus.folderName || t('settings.livecontainerStatusLinkedShort')) : t('settings.livecontainerStatusUnlinked')}
                   </Text>
                 </View>
                 <View style={styles.statusRowItem}>
-                  <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Auto-inicio directo:</Text>
+                  <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>{t('settings.directBootStatusLabel')}</Text>
                   <Text style={[styles.statusValue, { color: isDirectBootEnabled ? colors.success : colors.textMuted }]}>
-                    {isDirectBootEnabled ? 'Activado (Fullscreen)' : 'Desactivado'}
+                    {isDirectBootEnabled ? t('settings.directBootActiveFullscreen') : t('settings.directBootDisabled')}
                   </Text>
                 </View>
                 <View style={styles.statusRowItem}>
-                  <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Versión:</Text>
-                  <Text style={[styles.statusValue, { color: colors.text }]}>1.0.0 (Horizon OS)</Text>
+                  <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>{t('settings.versionLabel')}</Text>
+                  <Text style={[styles.statusValue, { color: colors.text }]}>{t('settings.versionValue')}</Text>
                 </View>
               </View>
             </View>
@@ -568,12 +632,41 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
               {/* Diagnostics Box */}
               <View style={[styles.diagnosticsContainer, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
-                <Text style={[styles.diagnosticsTitle, { color: colors.textMuted }]}>{t('settings.diagnostics')}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <Text style={[styles.diagnosticsTitle, { color: colors.textMuted }]}>{t('settings.diagnostics')}</Text>
+                  <Pressable
+                    style={[
+                      styles.testToggleBadge,
+                      {
+                        backgroundColor: isControllerTestActive ? colors.accentSurface : colors.surfaceSecondary,
+                        borderColor: isControllerTestActive ? colors.accent : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      setControllerTestActive(!isControllerTestActive);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.testToggleBadgeText,
+                        { color: isControllerTestActive ? colors.accentStrong : colors.textSecondary },
+                      ]}
+                    >
+                      {isControllerTestActive ? t('settings.controllerTestFinish') : t('settings.controllerTestBtn')}
+                    </Text>
+                  </Pressable>
+                </View>
                 <View style={[styles.buttonVisualizerBox, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
                   <Text style={[styles.buttonVisualizerText, { color: colors.accentStrong }]}>
                     {lastPressedButton || '---'}
                   </Text>
                 </View>
+                {isControllerTestActive ? (
+                  <Text style={[styles.diagnosticsInstructionText, { color: colors.accentStrong }]}>
+                    {t('settings.controllerTestInstruction')}
+                  </Text>
+                ) : null}
               </View>
 
               {/* Deadzone selector */}
@@ -624,7 +717,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </View>
                   <View style={[styles.badge, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]}>
                     <Text style={[styles.badgeText, { color: colors.accentStrong }]}>
-                      {liveContainerStatus.isLinked ? 'LINKED' : 'UNLINKED'}
+                      {liveContainerStatus.isLinked ? t('settings.livecontainerStatusLinkedBadge') : t('settings.livecontainerStatusUnlinkedBadge')}
                     </Text>
                   </View>
                 </View>
@@ -687,7 +780,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       {t('gameConfig.modeHeading')}
                     </Text>
                     <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      {globalLaunchConfig.opMode === 'handheld' ? 'Handheld (720p)' : 'Docked (1080p)'}
+                      {globalLaunchConfig.opMode === 'handheld' ? `${t('gameConfig.modeHandheld')} (720p)` : `${t('gameConfig.modeDocked')} (1080p)`}
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -712,7 +805,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           },
                         ]}
                       >
-                        Handheld
+                        {t('gameConfig.modeHandheld')}
                       </Text>
                     </Pressable>
 
@@ -737,7 +830,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           },
                         ]}
                       >
-                        Docked
+                        {t('gameConfig.modeDocked')}
                       </Text>
                     </Pressable>
                   </View>
@@ -769,95 +862,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
                             updateGlobalLaunchConfig({ fpsTarget: item.val as 0 | 30 | 60 });
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.badgeText,
-                              {
-                                color: isActive ? colors.accentStrong : colors.textSecondary,
-                                fontWeight: isActive ? '700' : '500',
-                              },
-                            ]}
-                          >
-                            {item.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Render Scale */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.scaleHeading')}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {[
-                      { val: 0.5, label: '50%' },
-                      { val: 0.75, label: '75%' },
-                      { val: 1.0, label: '100%' },
-                    ].map((item) => {
-                      const isActive = globalLaunchConfig.renderScale === item.val;
-                      return (
-                        <Pressable
-                          key={item.val}
-                          style={[
-                            styles.badge,
-                            isActive
-                              ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
-                              : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                          ]}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                            updateGlobalLaunchConfig({ renderScale: item.val as 0.5 | 0.75 | 1.0 });
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.badgeText,
-                              {
-                                color: isActive ? colors.accentStrong : colors.textSecondary,
-                                fontWeight: isActive ? '700' : '500',
-                              },
-                            ]}
-                          >
-                            {item.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Upscaler */}
-                <View style={[styles.optionRow, styles.optionRowBorder, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>
-                      {t('gameConfig.upscalerHeading')}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    {[
-                      { val: 'metalfx', label: 'MetalFX' },
-                      { val: 'linear', label: 'Linear' },
-                    ].map((item) => {
-                      const isActive = globalLaunchConfig.upscaler === item.val;
-                      return (
-                        <Pressable
-                          key={item.val}
-                          style={[
-                            styles.badge,
-                            isActive
-                              ? { borderColor: colors.accent, backgroundColor: colors.accentSurface }
-                              : { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                          ]}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                            updateGlobalLaunchConfig({ upscaler: item.val as 'metalfx' | 'linear' });
                           }}
                         >
                           <Text
@@ -958,7 +962,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   onPress={() => {
                     Alert.alert(
                       t('common.delete'),
-                      '¿Eliminar todos los juegos de la biblioteca?',
+                      t('settings.resetLibraryConfirm'),
                       [
                         { text: t('common.cancel'), style: 'cancel' },
                         { text: t('common.delete'), style: 'destructive', onPress: clearAllGames },
@@ -967,7 +971,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   }}
                 >
                   <Text style={[styles.optionLabel, { color: colors.destructive }]}>
-                    Restablecer biblioteca
+                    {t('settings.resetLibrary')}
                   </Text>
                   <Ionicons name="refresh-outline" size={18} color={colors.destructive} />
                 </Pressable>
@@ -994,17 +998,97 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <View
                     style={[
                       styles.aboutStatusBadge,
-                      { backgroundColor: colors.accentSurface, borderColor: colors.accent },
+                      updateStatus === 'update_available'
+                        ? { backgroundColor: colors.accentSurface, borderColor: colors.accent }
+                        : updateStatus === 'up_to_date'
+                        ? { backgroundColor: 'rgba(69, 201, 149, 0.15)', borderColor: colors.success }
+                        : { backgroundColor: colors.surfaceSecondary, borderColor: colors.border },
                     ]}
                   >
-                    <Text style={[styles.aboutStatusText, { color: colors.accentStrong }]}>
-                      UP TO DATE
+                    <Text
+                      style={[
+                        styles.aboutStatusText,
+                        {
+                          color:
+                            updateStatus === 'update_available'
+                              ? colors.accentStrong
+                              : updateStatus === 'up_to_date'
+                              ? colors.success
+                              : colors.textSecondary,
+                        },
+                      ]}
+                    >
+                      {updateStatus === 'checking'
+                        ? t('settings.checkingUpdatesBadge')
+                        : updateStatus === 'update_available'
+                        ? t('settings.updateAvailableBadge')
+                        : updateStatus === 'up_to_date'
+                        ? t('settings.upToDateBadge')
+                        : 'OFFLINE'}
                     </Text>
                   </View>
                 </View>
                 <Text style={[styles.aboutSubtitleText, { color: colors.textSecondary }]}>
                   {t('settings.aboutSubtitle')}
                 </Text>
+
+                {/* Live update status info and action buttons */}
+                <View style={[styles.updateActionContainer, { borderTopColor: colors.border }]}>
+                  {updateStatus === 'update_available' && latestRelease && (
+                    <View style={styles.updateAvailableBox}>
+                      <Text style={[styles.updateAvailableTitle, { color: colors.accentStrong }]}>
+                        {t('settings.newVersionAvailable', { version: latestRelease.version })}
+                      </Text>
+                      {latestRelease.releaseNotes ? (
+                        <Text style={[styles.updateNotesText, { color: colors.textSecondary }]} numberOfLines={3}>
+                          {latestRelease.releaseNotes}
+                        </Text>
+                      ) : null}
+                      <Pressable
+                        style={[styles.downloadBtn, { backgroundColor: colors.accent }]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                          if (latestRelease.downloadUrl) {
+                            Linking.openURL(latestRelease.downloadUrl).catch(() => {});
+                          }
+                        }}
+                      >
+                        <Ionicons name="cloud-download-outline" size={16} color="#000" />
+                        <Text style={styles.downloadBtnText}>
+                          {t('settings.downloadUpdate')}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {updateStatus === 'up_to_date' && (
+                    <Text style={[styles.upToDateSubtext, { color: colors.textMuted }]}>
+                      {t('settings.latestVersionInstalled')}
+                    </Text>
+                  )}
+
+                  <Pressable
+                    style={styles.checkUpdatesBtnRow}
+                    onPress={handleCheckForUpdates}
+                    disabled={updateStatus === 'checking'}
+                  >
+                    <Ionicons
+                      name="refresh-outline"
+                      size={14}
+                      color={updateStatus === 'checking' ? colors.textMuted : colors.accentStrong}
+                    />
+                    <Text
+                      style={[
+                        styles.checkUpdatesBtnText,
+                        { color: updateStatus === 'checking' ? colors.textMuted : colors.accentStrong },
+                      ]}
+                    >
+                      {updateStatus === 'checking'
+                        ? t('settings.checkingUpdatesBadge')
+                        : t('settings.checkUpdatesBtn')}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
 
               {/* Main Description */}
@@ -1091,7 +1175,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       {t('settings.aboutDeveloperName')}
                     </Text>
                     <Text style={[styles.optionSubText, { color: colors.textSecondary }]}>
-                      Developer & Maintainer
+                      {t('settings.developerRole')}
                     </Text>
                   </View>
                   <Ionicons name="person-circle-outline" size={24} color={colors.textSecondary} />
@@ -1402,6 +1486,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Courier',
     fontWeight: '700',
+  },
+  testToggleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  testToggleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  diagnosticsInstructionText: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  updateActionContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  updateAvailableBox: {
+    marginBottom: 8,
+  },
+  updateAvailableTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  updateNotesText: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 5,
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  downloadBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#000',
+  },
+  upToDateSubtext: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  checkUpdatesBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+  },
+  checkUpdatesBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   deadzoneTitle: {
     fontSize: 12,

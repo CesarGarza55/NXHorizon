@@ -1,8 +1,6 @@
 export interface GameLaunchConfig {
   opMode: 'handheld' | 'docked';
   fpsTarget: 0 | 30 | 60;
-  renderScale: 0.5 | 0.75 | 1.0;
-  upscaler: 'linear' | 'metalfx';
   metalHud: boolean;
   phoneMotion: boolean;
   language: string; // 'auto' | 'es-ES' | 'en-US' | 'ja-JP' | 'fr-FR' | 'de-DE' | 'it-IT'
@@ -11,8 +9,6 @@ export interface GameLaunchConfig {
 export const DEFAULT_GAME_LAUNCH_CONFIG: GameLaunchConfig = {
   opMode: 'handheld',
   fpsTarget: 0,
-  renderScale: 1.0,
-  upscaler: 'metalfx',
   metalHud: false,
   phoneMotion: true,
   language: 'auto',
@@ -28,6 +24,8 @@ export interface GameMetadata {
   releaseDate?: string;
   genre: string;
   description: string;
+  localizedDescriptions?: Record<string, string>;
+  localizedGenres?: Record<string, string>;
   coverUrl: string;
   heroUrl: string;
   screenshots: string[];
@@ -52,4 +50,30 @@ export interface SpatialNode {
   y?: number;
   onSelect?: () => void;
   onBack?: () => void;
+}
+
+export function getLocalizedDescription(game?: GameMetadata | null, lang?: string): string {
+  if (!game) return '';
+  const currentLang = (lang || 'es').toLowerCase().startsWith('es') ? 'es' : 'en';
+  if (game.localizedDescriptions && game.localizedDescriptions[currentLang]) {
+    return game.localizedDescriptions[currentLang];
+  }
+  const fallbackLang = currentLang === 'es' ? 'en' : 'es';
+  if (game.localizedDescriptions && game.localizedDescriptions[fallbackLang]) {
+    return game.localizedDescriptions[fallbackLang];
+  }
+  return game.description || '';
+}
+
+export function getLocalizedGenre(game?: GameMetadata | null, lang?: string): string {
+  if (!game) return '';
+  const currentLang = (lang || 'es').toLowerCase().startsWith('es') ? 'es' : 'en';
+  if (game.localizedGenres && game.localizedGenres[currentLang]) {
+    return game.localizedGenres[currentLang];
+  }
+  const fallbackLang = currentLang === 'es' ? 'en' : 'es';
+  if (game.localizedGenres && game.localizedGenres[fallbackLang]) {
+    return game.localizedGenres[fallbackLang];
+  }
+  return game.genre || '';
 }

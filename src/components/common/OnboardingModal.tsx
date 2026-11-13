@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -29,8 +29,15 @@ interface OnboardingModalProps {
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({ visible, onClose }) => {
   const { t } = useTranslation();
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+
+  const headerTopPadding = isLandscape ? Math.max(insets.top, 8) : Math.max(insets.top, 50);
+  const headerBottomPadding = isLandscape ? 6 : 10;
+  const bottomBarPadding = isLandscape ? Math.max(insets.bottom, 6) : Math.max(insets.bottom, 20);
+  const sideLeftPadding = Math.max(insets.left, isLandscape ? 32 : 20);
+  const sideRightPadding = Math.max(insets.right, isLandscape ? 32 : 20);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLinkingFolder, setIsLinkingFolder] = useState(false);
@@ -102,354 +109,378 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ visible, onClo
       supportedOrientations={['portrait', 'landscape-left', 'landscape-right']}
       onRequestClose={handleFinish}
     >
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={['top', 'bottom', 'left', 'right']}
-      >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <StatusBar hidden />
-          {/* Top Header Bar */}
-          <View style={[styles.topHeader, { borderBottomColor: colors.border }]}>
-            <View style={styles.brandRow}>
-              <Ionicons name="game-controller" size={18} color={colors.accent} />
-              <Text style={[styles.brandText, { color: colors.accentStrong }]}>NX HORIZON</Text>
+        {/* Top Header Bar */}
+        <View
+          style={[
+            styles.topHeader,
+            {
+              borderBottomColor: colors.border,
+              paddingTop: headerTopPadding,
+              paddingBottom: headerBottomPadding,
+              paddingLeft: sideLeftPadding,
+              paddingRight: sideRightPadding,
+            },
+          ]}
+        >
+          <View style={styles.brandRow}>
+            <Ionicons name="game-controller" size={18} color={colors.accent} />
+            <Text style={[styles.brandText, { color: colors.accentStrong }]}>NX HORIZON</Text>
+          </View>
+          <Pressable
+            style={[styles.skipBtn, isLinkingFolder && styles.disabledAction]}
+            onPress={handleFinish}
+            disabled={isLinkingFolder}
+            hitSlop={10}
+          >
+            <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>{t('onboarding.skip')}</Text>
+          </Pressable>
+        </View>
+
+        {/* Slide Content */}
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isLandscape && styles.scrollContentLandscape,
+            {
+              paddingLeft: sideLeftPadding,
+              paddingRight: sideRightPadding,
+            },
+          ]}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* SLIDE 0: Welcome */}
+          {currentSlide === 0 && (
+            <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
+              <View
+                style={[
+                  styles.slideOverview,
+                  isLandscape && styles.slideOverviewLandscape,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: colors.surface, borderColor: colors.accent },
+                    isLandscape && styles.iconCircleLandscape,
+                  ]}
+                >
+                  <Ionicons name="sparkles" size={isLandscape ? 34 : 48} color={colors.accent} />
+                </View>
+                <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
+                  {t('onboarding.welcomeTitle')}
+                </Text>
+                <Text
+                  style={[
+                    styles.slideSubtitle,
+                    { color: colors.accentStrong },
+                    isLandscape && styles.slideSubtitleLandscape,
+                  ]}
+                >
+                  {t('onboarding.welcomeSubtitle')}
+                </Text>
+              </View>
+              <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
+                <Text style={[styles.slideDesc, { color: colors.textSecondary }]}>{t('onboarding.welcomeDesc')}</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.linkFolderButton,
+                    pressed && styles.linkFolderButtonPressed,
+                    isLinkingFolder && styles.disabledAction,
+                  ]}
+                  onPress={handleLinkFolder}
+                  disabled={isLinkingFolder}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('onboarding.linkContainerNow')}
+                >
+                  {isLinkingFolder ? (
+                    <ActivityIndicator size="small" color={colors.surface} />
+                  ) : (
+                    <Ionicons
+                      name={linkedFolder.isLinked ? 'checkmark-circle' : 'folder-open'}
+                      size={19}
+                      color={colors.surface}
+                    />
+                  )}
+                  <Text style={[styles.linkFolderButtonText, { color: colors.surface }]}>
+                    {isLinkingFolder
+                      ? t('onboarding.linkingFolder')
+                      : linkedFolder.isLinked
+                        ? t('onboarding.changeLinkedFolder')
+                        : t('onboarding.linkContainerNow')}
+                  </Text>
+                  {!isLinkingFolder && (
+                    <Ionicons name="chevron-forward" size={16} color={colors.surface} />
+                  )}
+                </Pressable>
+                {linkedFolder.isLinked && (
+                  <Text style={[styles.linkFolderSuccess, { color: colors.success }]}>
+                    {t('onboarding.folderLinked', {
+                      folder: 'LiveContainer',
+                    })}
+                  </Text>
+                )}
+                {linkError ? <Text style={[styles.linkFolderError, { color: colors.destructive }]}>{linkError}</Text> : null}
+              </View>
             </View>
+          )}
+
+          {/* SLIDE 1: NX2Apple Compilation Requirement */}
+          {currentSlide === 1 && (
+            <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
+              <View
+                style={[
+                  styles.slideOverview,
+                  isLandscape && styles.slideOverviewLandscape,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: colors.surface, borderColor: colors.destructive },
+                    isLandscape && styles.iconCircleLandscape,
+                  ]}
+                >
+                  <Ionicons name="cube-outline" size={isLandscape ? 32 : 46} color={colors.destructive} />
+                </View>
+                <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
+                  {t('onboarding.nx2appleTitle')}
+                </Text>
+                <Text
+                  style={[
+                    styles.slideSubtitle,
+                    { color: colors.destructive },
+                    isLandscape && styles.slideSubtitleLandscape,
+                  ]}
+                >
+                  {t('onboarding.nx2appleSubtitle')}
+                </Text>
+              </View>
+              <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
+                <View
+                  style={[
+                    styles.alertCard,
+                    { backgroundColor: colors.accentSurface, borderColor: colors.destructive },
+                    isLandscape && styles.alertCardCompact,
+                  ]}
+                >
+                  <Ionicons
+                    name="warning-outline"
+                    size={20}
+                    color={colors.destructive}
+                    style={{ marginTop: 2 }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.alertCardTitle, { color: colors.destructive }]}>
+                      {t('onboarding.standaloneRequired')}
+                    </Text>
+                    <Text style={[styles.alertCardText, { color: colors.textSecondary }]}>{t('onboarding.nx2appleDesc')}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {currentSlide === 2 && (
+            <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
+              <View
+                style={[
+                  styles.slideOverview,
+                  isLandscape && styles.slideOverviewLandscape,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: colors.surface, borderColor: colors.accent },
+                    isLandscape && styles.iconCircleLandscape,
+                  ]}
+                >
+                  <Ionicons name="link" size={isLandscape ? 32 : 46} color={colors.accent} />
+                </View>
+                <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
+                  {t('onboarding.livecontainerTitle')}
+                </Text>
+                <Text
+                  style={[
+                    styles.slideSubtitle,
+                    { color: colors.accentStrong },
+                    isLandscape && styles.slideSubtitleLandscape,
+                  ]}
+                >
+                  {t('onboarding.livecontainerSubtitle')}
+                </Text>
+              </View>
+              <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
+                <View
+                  style={[
+                    styles.stepsContainer,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    isLandscape && styles.stepsContainerLandscape,
+                  ]}
+                >
+                  <View style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
+                      <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>1</Text>
+                    </View>
+                    <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step1')}</Text>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
+                      <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>2</Text>
+                    </View>
+                    <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step2')}</Text>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
+                      <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>3</Text>
+                    </View>
+                    <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step3')}</Text>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: colors.accent }]}>
+                      <Text style={[styles.stepNumTextHighlight, { color: colors.surface }]}>4</Text>
+                    </View>
+                    <Text style={[styles.stepDescText, { color: colors.accentStrong, fontWeight: '700' }]}>
+                      {t('onboarding.step4')}
+                    </Text>
+                  </View>
+
+                  <View style={styles.stepRow}>
+                    <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
+                      <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>5</Text>
+                    </View>
+                    <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step5')}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {currentSlide === 3 && (
+            <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
+              <View
+                style={[
+                  styles.slideOverview,
+                  isLandscape && styles.slideOverviewLandscape,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: colors.surface, borderColor: colors.success },
+                    isLandscape && styles.iconCircleLandscape,
+                  ]}
+                >
+                  <Ionicons name="flash" size={isLandscape ? 32 : 46} color={colors.success} />
+                </View>
+                <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
+                  {t('onboarding.directBootTitle')}
+                </Text>
+                <Text
+                  style={[
+                    styles.slideSubtitle,
+                    { color: colors.success },
+                    isLandscape && styles.slideSubtitleLandscape,
+                  ]}
+                >
+                  {t('onboarding.directBootSubtitle')}
+                </Text>
+              </View>
+              <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
+                <View
+                  style={[
+                    styles.alertCard,
+                    { backgroundColor: colors.accentSurface, borderColor: colors.success },
+                    isLandscape && styles.alertCardCompact,
+                  ]}
+                >
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={20}
+                    color={colors.success}
+                    style={{ marginTop: 2 }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.alertCardTitle, { color: colors.success }]}>
+                      {t('onboarding.directBootEnabled')}
+                    </Text>
+                    <Text style={[styles.alertCardText, { color: colors.textSecondary }]}>
+                      {t('onboarding.directBootDesc')}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Bottom Pagination & Navigation Controls */}
+        <View
+          style={[
+            styles.bottomNav,
+            {
+              borderTopColor: colors.border,
+              backgroundColor: colors.background,
+              paddingBottom: bottomBarPadding,
+              paddingLeft: sideLeftPadding,
+              paddingRight: sideRightPadding,
+              height: (isLandscape ? 48 : 58) + bottomBarPadding,
+            },
+          ]}
+        >
+          <View style={styles.navLeft}>
+            {currentSlide > 0 ? (
+              <Pressable style={styles.navBtnSecondary} onPress={handleBack}>
+                <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
+                <Text style={[styles.navBtnSecondaryText, { color: colors.textSecondary }]}>{t('onboarding.back')}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {/* Dots Indicator */}
+          <View style={styles.dotsRow}>
+            {Array.from({ length: totalSlides }).map((_, idx) => (
+              <View
+                key={idx}
+                style={[
+                  styles.dot,
+                  { backgroundColor: colors.border },
+                  idx === currentSlide && { backgroundColor: colors.accent },
+                  idx === currentSlide && styles.dotActive,
+                ]}
+              />
+            ))}
+          </View>
+
+          <View style={styles.navRight}>
             <Pressable
-              style={[styles.skipBtn, isLinkingFolder && styles.disabledAction]}
-              onPress={handleFinish}
-              disabled={isLinkingFolder}
-              hitSlop={10}
+              style={({ pressed }) => [
+                styles.navBtnPrimary,
+                { backgroundColor: colors.accent },
+                pressed && styles.navBtnPrimaryPressed,
+              ]}
+              onPress={handleNext}
             >
-              <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>{t('onboarding.skip')}</Text>
+              <Text style={[styles.navBtnPrimaryText, { color: colors.surface }]}>
+                {currentSlide === totalSlides - 1 ? t('onboarding.finish') : t('onboarding.next')}
+              </Text>
+              <Ionicons
+                name={currentSlide === totalSlides - 1 ? 'checkmark' : 'chevron-forward'}
+                size={16}
+                color={colors.surface}
+              />
             </Pressable>
           </View>
-
-          {/* Slide Content */}
-          <ScrollView
-            style={styles.scrollArea}
-            contentContainerStyle={[
-              styles.scrollContent,
-              isLandscape && styles.scrollContentLandscape,
-            ]}
-            scrollEnabled={!isLandscape}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* SLIDE 0: Welcome */}
-            {currentSlide === 0 && (
-              <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
-                <View
-                  style={[
-                    styles.slideOverview,
-                    isLandscape && styles.slideOverviewLandscape,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: colors.surface, borderColor: colors.accent },
-                      isLandscape && styles.iconCircleLandscape,
-                    ]}
-                  >
-                    <Ionicons name="sparkles" size={isLandscape ? 34 : 48} color={colors.accent} />
-                  </View>
-                  <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
-                    {t('onboarding.welcomeTitle')}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.slideSubtitle,
-                      { color: colors.accentStrong },
-                      isLandscape && styles.slideSubtitleLandscape,
-                    ]}
-                  >
-                    {t('onboarding.welcomeSubtitle')}
-                  </Text>
-                </View>
-                <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
-                  <Text style={[styles.slideDesc, { color: colors.textSecondary }]}>{t('onboarding.welcomeDesc')}</Text>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.linkFolderButton,
-                      pressed && styles.linkFolderButtonPressed,
-                      isLinkingFolder && styles.disabledAction,
-                    ]}
-                    onPress={handleLinkFolder}
-                    disabled={isLinkingFolder}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('onboarding.linkContainerNow')}
-                  >
-                    {isLinkingFolder ? (
-                      <ActivityIndicator size="small" color={colors.surface} />
-                    ) : (
-                      <Ionicons
-                        name={linkedFolder.isLinked ? 'checkmark-circle' : 'folder-open'}
-                        size={19}
-                        color={colors.surface}
-                      />
-                    )}
-                    <Text style={[styles.linkFolderButtonText, { color: colors.surface }]}>
-                      {isLinkingFolder
-                        ? t('onboarding.linkingFolder')
-                        : linkedFolder.isLinked
-                          ? t('onboarding.changeLinkedFolder')
-                          : t('onboarding.linkContainerNow')}
-                    </Text>
-                    {!isLinkingFolder && (
-                      <Ionicons name="chevron-forward" size={16} color={colors.surface} />
-                    )}
-                  </Pressable>
-                  {linkedFolder.isLinked && (
-                    <Text style={[styles.linkFolderSuccess, { color: colors.success }]}>
-                      {t('onboarding.folderLinked', {
-                        folder: 'LiveContainer',
-                      })}
-                    </Text>
-                  )}
-                  {linkError ? <Text style={[styles.linkFolderError, { color: colors.destructive }]}>{linkError}</Text> : null}
-                </View>
-              </View>
-            )}
-
-            {/* SLIDE 1: NX2Apple Compilation Requirement */}
-            {currentSlide === 1 && (
-              <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
-                <View
-                  style={[
-                    styles.slideOverview,
-                    isLandscape && styles.slideOverviewLandscape,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: colors.surface, borderColor: colors.destructive },
-                      isLandscape && styles.iconCircleLandscape,
-                    ]}
-                  >
-                    <Ionicons name="cube-outline" size={isLandscape ? 32 : 46} color={colors.destructive} />
-                  </View>
-                  <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
-                    {t('onboarding.nx2appleTitle')}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.slideSubtitle,
-                      { color: colors.destructive },
-                      isLandscape && styles.slideSubtitleLandscape,
-                    ]}
-                  >
-                    {t('onboarding.nx2appleSubtitle')}
-                  </Text>
-                </View>
-                <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
-                  <View
-                    style={[
-                      styles.alertCard,
-                      { backgroundColor: colors.accentSurface, borderColor: colors.destructive },
-                      isLandscape && styles.alertCardCompact,
-                    ]}
-                  >
-                    <Ionicons
-                      name="warning-outline"
-                      size={20}
-                      color={colors.destructive}
-                      style={{ marginTop: 2 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.alertCardTitle, { color: colors.destructive }]}>
-                        {t('onboarding.standaloneRequired')}
-                      </Text>
-                      <Text style={[styles.alertCardText, { color: colors.textSecondary }]}>{t('onboarding.nx2appleDesc')}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {currentSlide === 2 && (
-              <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
-                <View
-                  style={[
-                    styles.slideOverview,
-                    isLandscape && styles.slideOverviewLandscape,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: colors.surface, borderColor: colors.accent },
-                      isLandscape && styles.iconCircleLandscape,
-                    ]}
-                  >
-                    <Ionicons name="link" size={isLandscape ? 32 : 46} color={colors.accent} />
-                  </View>
-                  <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
-                    {t('onboarding.livecontainerTitle')}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.slideSubtitle,
-                      { color: colors.accentStrong },
-                      isLandscape && styles.slideSubtitleLandscape,
-                    ]}
-                  >
-                    {t('onboarding.livecontainerSubtitle')}
-                  </Text>
-                </View>
-                <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
-                  <View
-                    style={[
-                      styles.stepsContainer,
-                      { backgroundColor: colors.surface, borderColor: colors.border },
-                      isLandscape && styles.stepsContainerLandscape,
-                    ]}
-                  >
-                    <View style={styles.stepRow}>
-                      <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
-                        <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>1</Text>
-                      </View>
-                      <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step1')}</Text>
-                    </View>
-
-                    <View style={styles.stepRow}>
-                      <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
-                        <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>2</Text>
-                      </View>
-                      <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step2')}</Text>
-                    </View>
-
-                    <View style={styles.stepRow}>
-                      <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
-                        <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>3</Text>
-                      </View>
-                      <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step3')}</Text>
-                    </View>
-
-                    <View style={styles.stepRow}>
-                      <View style={[styles.stepNum, { backgroundColor: colors.accent }]}>
-                        <Text style={[styles.stepNumTextHighlight, { color: colors.surface }]}>4</Text>
-                      </View>
-                      <Text style={[styles.stepDescText, { color: colors.accentStrong, fontWeight: '700' }]}>
-                        {t('onboarding.step4')}
-                      </Text>
-                    </View>
-
-                    <View style={styles.stepRow}>
-                      <View style={[styles.stepNum, { backgroundColor: colors.surfaceSecondary }]}>
-                        <Text style={[styles.stepNumText, { color: colors.textSecondary }]}>5</Text>
-                      </View>
-                      <Text style={[styles.stepDescText, { color: colors.textSecondary }]}>{t('onboarding.step5')}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {currentSlide === 3 && (
-              <View style={[styles.slideCard, isLandscape && styles.slideCardLandscape]}>
-                <View
-                  style={[
-                    styles.slideOverview,
-                    isLandscape && styles.slideOverviewLandscape,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.iconCircle,
-                      { backgroundColor: colors.surface, borderColor: colors.success },
-                      isLandscape && styles.iconCircleLandscape,
-                    ]}
-                  >
-                    <Ionicons name="flash" size={isLandscape ? 32 : 46} color={colors.success} />
-                  </View>
-                  <Text style={[styles.slideTitle, { color: colors.text }, isLandscape && styles.slideTitleLandscape]}>
-                    {t('onboarding.directBootTitle')}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.slideSubtitle,
-                      { color: colors.success },
-                      isLandscape && styles.slideSubtitleLandscape,
-                    ]}
-                  >
-                    {t('onboarding.directBootSubtitle')}
-                  </Text>
-                </View>
-                <View style={[styles.slideDetails, isLandscape && styles.slideDetailsLandscape]}>
-                  <View
-                    style={[
-                      styles.alertCard,
-                      { backgroundColor: colors.accentSurface, borderColor: colors.success },
-                      isLandscape && styles.alertCardCompact,
-                    ]}
-                  >
-                    <Ionicons
-                      name="checkmark-circle-outline"
-                      size={20}
-                      color={colors.success}
-                      style={{ marginTop: 2 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.alertCardTitle, { color: colors.success }]}>
-                        {t('onboarding.directBootEnabled')}
-                      </Text>
-                      <Text style={[styles.alertCardText, { color: colors.textSecondary }]}>
-                        {t('onboarding.directBootDesc')}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            )}
-          </ScrollView>
-
-          {/* Bottom Pagination & Navigation Controls */}
-          <View style={[styles.bottomNav, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
-            <View style={styles.navLeft}>
-              {currentSlide > 0 ? (
-                <Pressable style={styles.navBtnSecondary} onPress={handleBack}>
-                  <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
-                  <Text style={[styles.navBtnSecondaryText, { color: colors.textSecondary }]}>{t('onboarding.back')}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {/* Dots Indicator */}
-            <View style={styles.dotsRow}>
-              {Array.from({ length: totalSlides }).map((_, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.dot,
-                    { backgroundColor: colors.border },
-                    idx === currentSlide && { backgroundColor: colors.accent },
-                    idx === currentSlide && styles.dotActive,
-                  ]}
-                />
-              ))}
-            </View>
-
-            <View style={styles.navRight}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.navBtnPrimary,
-                  { backgroundColor: colors.accent },
-                  pressed && styles.navBtnPrimaryPressed,
-                ]}
-                onPress={handleNext}
-              >
-                <Text style={[styles.navBtnPrimaryText, { color: colors.surface }]}>
-                  {currentSlide === totalSlides - 1 ? t('onboarding.finish') : t('onboarding.next')}
-                </Text>
-                <Ionicons
-                  name={currentSlide === totalSlides - 1 ? 'checkmark' : 'chevron-forward'}
-                  size={16}
-                  color={colors.surface}
-                />
-              </Pressable>
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -459,7 +490,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C1C1C',
   },
   topHeader: {
-    minHeight: 48,
+    paddingBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -600,7 +631,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: '#1686A0',
+    backgroundColor: '#00AFC2',
   },
   linkFolderButtonPressed: {
     opacity: 0.82,

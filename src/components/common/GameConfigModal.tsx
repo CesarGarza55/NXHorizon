@@ -156,7 +156,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
       if (dir === 'up') {
-        if (focusedRow === 7 && !isLandscape) {
+        if (focusedRow === 5 && !isLandscape) {
           if (focusedFooterBtn === 0 || focusedFooterBtn === 1) {
             setFocusedFooterBtn(focusedFooterBtn === 0 ? 2 : 3);
             return;
@@ -168,14 +168,14 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
           return next;
         });
       } else if (dir === 'down') {
-        if (focusedRow === 7 && !isLandscape) {
+        if (focusedRow === 5 && !isLandscape) {
           if (focusedFooterBtn === 2 || focusedFooterBtn === 3) {
             setFocusedFooterBtn(focusedFooterBtn === 2 ? 0 : 1);
             return;
           }
         }
         setFocusedRow((r) => {
-          const next = Math.min(7, r + 1);
+          const next = Math.min(5, r + 1);
           scrollRef.current?.scrollTo({ y: next * 75, animated: true });
           return next;
         });
@@ -192,29 +192,19 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
             setConfig((c) => ({ ...c, fpsTarget: fpsOptions[nextIdx] }));
             break;
           }
-          case 2: { // Render Scale: 0.5 -> 0.75 -> 1.0
-            const scaleOptions: (0.5 | 0.75 | 1.0)[] = [0.5, 0.75, 1.0];
-            const curIdx = scaleOptions.indexOf(config.renderScale);
-            const nextIdx = (curIdx + step + scaleOptions.length) % scaleOptions.length;
-            setConfig((c) => ({ ...c, renderScale: scaleOptions[nextIdx] }));
-            break;
-          }
-          case 3: // Upscaler
-            setConfig((c) => ({ ...c, upscaler: c.upscaler === 'metalfx' ? 'linear' : 'metalfx' }));
-            break;
-          case 4: // Metal HUD
+          case 2: // Metal HUD
             setConfig((c) => ({ ...c, metalHud: !c.metalHud }));
             break;
-          case 5: // Phone Motion
+          case 3: // Phone Motion
             setConfig((c) => ({ ...c, phoneMotion: !c.phoneMotion }));
             break;
-          case 6: { // Language
+          case 4: { // Language
             const curIdx = LANGUAGES.findIndex((l) => l.code === (config.language || 'auto'));
             const nextIdx = (curIdx + step + LANGUAGES.length) % LANGUAGES.length;
             setConfig((c) => ({ ...c, language: LANGUAGES[nextIdx].code }));
             break;
           }
-          case 7: { // Footer buttons
+          case 5: { // Footer buttons
             if (!isLandscape) {
               if (focusedFooterBtn === 2 || focusedFooterBtn === 3) {
                 setFocusedFooterBtn(focusedFooterBtn === 2 ? 3 : 2);
@@ -244,20 +234,14 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
           const nextIdx = (fpsOptions.indexOf(config.fpsTarget) + 1) % fpsOptions.length;
           setConfig((c) => ({ ...c, fpsTarget: fpsOptions[nextIdx] }));
         } else if (focusedRow === 2) {
-          const scaleOptions: (0.5 | 0.75 | 1.0)[] = [0.5, 0.75, 1.0];
-          const nextIdx = (scaleOptions.indexOf(config.renderScale) + 1) % scaleOptions.length;
-          setConfig((c) => ({ ...c, renderScale: scaleOptions[nextIdx] }));
-        } else if (focusedRow === 3) {
-          setConfig((c) => ({ ...c, upscaler: c.upscaler === 'metalfx' ? 'linear' : 'metalfx' }));
-        } else if (focusedRow === 4) {
           setConfig((c) => ({ ...c, metalHud: !c.metalHud }));
-        } else if (focusedRow === 5) {
+        } else if (focusedRow === 3) {
           setConfig((c) => ({ ...c, phoneMotion: !c.phoneMotion }));
-        } else if (focusedRow === 6) {
+        } else if (focusedRow === 4) {
           const curIdx = LANGUAGES.findIndex((l) => l.code === (config.language || 'auto'));
           const nextIdx = (curIdx + 1) % LANGUAGES.length;
           setConfig((c) => ({ ...c, language: LANGUAGES[nextIdx].code }));
-        } else if (focusedRow === 7) {
+        } else if (focusedRow === 5) {
           if (focusedFooterBtn === 0) handleResetDefaults();
           else if (focusedFooterBtn === 1) onClose();
           else if (focusedFooterBtn === 2) handleSave(false);
@@ -369,7 +353,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                 </Text>
                 {focusedRow === 0 && (
                   <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>◀ ▶ D-PAD</Text>
+                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>{t('gameConfig.dpadHint')}</Text>
                   </View>
                 )}
               </View>
@@ -457,7 +441,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                 </Text>
                 {focusedRow === 1 && (
                   <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>◀ ▶ D-PAD</Text>
+                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>{t('gameConfig.dpadHint')}</Text>
                   </View>
                 )}
               </View>
@@ -504,172 +488,23 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
               </View>
             </View>
 
-            {/* Row 2: Render Scale */}
+            {/* Row 2: Metal HUD */}
             <View
               style={[
                 styles.sectionBlock,
                 focusedRow === 2 && [styles.focusedRowBox, { borderColor: colors.accent }],
               ]}
             >
-              <View style={styles.sectionHeaderRow}>
-                <Ionicons name="resize-outline" size={17} color={colors.accent} />
-                <Text style={[styles.sectionHeading, { color: colors.text }]}>
-                  {t('gameConfig.scaleHeading')}
-                </Text>
-                {focusedRow === 2 && (
-                  <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>◀ ▶ D-PAD</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-                {t('gameConfig.scaleDesc')}
-              </Text>
-              <View style={styles.segmentedRow}>
-                {[
-                  { val: 0.5, label: '50% (Eco)' },
-                  { val: 0.75, label: '75%' },
-                  { val: 1.0, label: '100% (Native)' },
-                ].map((item) => {
-                  const isActive = config.renderScale === item.val;
-                  return (
-                    <Pressable
-                      key={item.val}
-                      style={({ pressed }) => [
-                        styles.segmentButton,
-                        isActive
-                          ? [styles.segmentActive, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]
-                          : [styles.segmentInactive, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }],
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                        setFocusedRow(2);
-                        setConfig((prev) => ({ ...prev, renderScale: item.val as 0.5 | 0.75 | 1.0 }));
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          {
-                            color: isActive ? colors.accent : colors.text,
-                            fontWeight: isActive ? '700' : '500',
-                          },
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Row 3: Upscaler */}
-            <View
-              style={[
-                styles.sectionBlock,
-                focusedRow === 3 && [styles.focusedRowBox, { borderColor: colors.accent }],
-              ]}
-            >
-              <View style={styles.sectionHeaderRow}>
-                <Ionicons name="sparkles-outline" size={17} color={colors.accent} />
-                <Text style={[styles.sectionHeading, { color: colors.text }]}>
-                  {t('gameConfig.upscalerHeading')}
-                </Text>
-                {focusedRow === 3 && (
-                  <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>◀ ▶ D-PAD</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-                {t('gameConfig.upscalerDesc')}
-              </Text>
-              <View style={styles.segmentedRow}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.segmentButton,
-                    config.upscaler === 'metalfx'
-                      ? [styles.segmentActive, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]
-                      : [styles.segmentInactive, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }],
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setFocusedRow(3);
-                    setConfig((prev) => ({ ...prev, upscaler: 'metalfx' }));
-                  }}
-                >
-                  <Ionicons
-                    name="flash-outline"
-                    size={16}
-                    color={config.upscaler === 'metalfx' ? colors.accent : colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      {
-                        color: config.upscaler === 'metalfx' ? colors.accent : colors.text,
-                        fontWeight: config.upscaler === 'metalfx' ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    Apple MetalFX
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.segmentButton,
-                    config.upscaler === 'linear'
-                      ? [styles.segmentActive, { borderColor: colors.accent, backgroundColor: colors.accentSurface }]
-                      : [styles.segmentInactive, { borderColor: colors.border, backgroundColor: colors.surfaceSecondary }],
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setFocusedRow(3);
-                    setConfig((prev) => ({ ...prev, upscaler: 'linear' }));
-                  }}
-                >
-                  <Ionicons
-                    name="contrast-outline"
-                    size={16}
-                    color={config.upscaler === 'linear' ? colors.accent : colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      {
-                        color: config.upscaler === 'linear' ? colors.accent : colors.text,
-                        fontWeight: config.upscaler === 'linear' ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    Bilinear (Linear)
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Row 4 & 5: Toggles (Metal HUD & Gyro Motion) */}
-            <View
-              style={[
-                styles.sectionBlock,
-                (focusedRow === 4 || focusedRow === 5) && [styles.focusedRowBox, { borderColor: colors.accent }],
-              ]}
-            >
-              <View style={[styles.toggleRow, { borderBottomColor: colors.border }]}>
+              <View style={styles.toggleRow}>
                 <View style={styles.toggleInfo}>
                   <View style={styles.sectionHeaderRow}>
                     <Ionicons name="analytics-outline" size={17} color={colors.accent} />
                     <Text style={[styles.toggleTitle, { color: colors.text }]}>
                       {t('gameConfig.metalHudTitle')}
                     </Text>
-                    {focusedRow === 4 && (
+                    {focusedRow === 2 && (
                       <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                        <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>A: TOGGLE</Text>
+                        <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>{t('gameConfig.toggleHint')}</Text>
                       </View>
                     )}
                   </View>
@@ -681,14 +516,22 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                   value={config.metalHud}
                   onValueChange={(val) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setFocusedRow(4);
+                    setFocusedRow(2);
                     setConfig((prev) => ({ ...prev, metalHud: val }));
                   }}
                   trackColor={{ false: colors.border, true: colors.accent }}
                   thumbColor="#FFFFFF"
                 />
               </View>
+            </View>
 
+            {/* Row 3: Gyro Motion */}
+            <View
+              style={[
+                styles.sectionBlock,
+                focusedRow === 3 && [styles.focusedRowBox, { borderColor: colors.accent }],
+              ]}
+            >
               <View style={styles.toggleRow}>
                 <View style={styles.toggleInfo}>
                   <View style={styles.sectionHeaderRow}>
@@ -696,9 +539,9 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                     <Text style={[styles.toggleTitle, { color: colors.text }]}>
                       {t('gameConfig.motionTitle')}
                     </Text>
-                    {focusedRow === 5 && (
+                    {focusedRow === 3 && (
                       <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                        <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>A: TOGGLE</Text>
+                        <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>{t('gameConfig.toggleHint')}</Text>
                       </View>
                     )}
                   </View>
@@ -710,7 +553,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                   value={config.phoneMotion}
                   onValueChange={(val) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setFocusedRow(5);
+                    setFocusedRow(3);
                     setConfig((prev) => ({ ...prev, phoneMotion: val }));
                   }}
                   trackColor={{ false: colors.border, true: colors.accent }}
@@ -719,11 +562,11 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
               </View>
             </View>
 
-            {/* Row 6: Language */}
+            {/* Row 4: Language */}
             <View
               style={[
                 styles.sectionBlock,
-                focusedRow === 6 && [styles.focusedRowBox, { borderColor: colors.accent }],
+                focusedRow === 4 && [styles.focusedRowBox, { borderColor: colors.accent }],
               ]}
             >
               <View style={styles.sectionHeaderRow}>
@@ -731,9 +574,9 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                 <Text style={[styles.sectionHeading, { color: colors.text }]}>
                   {t('gameConfig.langHeading')}
                 </Text>
-                {focusedRow === 6 && (
+                {focusedRow === 4 && (
                   <View style={[styles.focusPill, { backgroundColor: colors.accentSurface }]}>
-                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>◀ ▶ D-PAD</Text>
+                    <Text style={[styles.focusPillText, { color: colors.accentStrong }]}>{t('gameConfig.dpadHint')}</Text>
                   </View>
                 )}
               </View>
@@ -756,7 +599,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                       ]}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                        setFocusedRow(6);
+                        setFocusedRow(4);
                         setConfig((prev) => ({ ...prev, language: lang.code }));
                       }}
                     >
@@ -778,7 +621,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
             </View>
           </ScrollView>
 
-          {/* Row 7: Footer Actions */}
+          {/* Row 5: Footer Actions */}
           <View
             style={[
               styles.footer,
@@ -792,7 +635,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                   style={({ pressed }) => [
                     styles.resetButton,
                     { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                    focusedRow === 7 && focusedFooterBtn === 0 && styles.focusedButtonOutline,
+                    focusedRow === 5 && focusedFooterBtn === 0 && styles.focusedButtonOutline,
                     pressed && { opacity: 0.7 },
                   ]}
                   onPress={handleResetDefaults}
@@ -809,7 +652,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                     style={({ pressed }) => [
                       styles.actionBtn,
                       { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                      focusedRow === 7 && focusedFooterBtn === 1 && styles.focusedButtonOutline,
+                      focusedRow === 5 && focusedFooterBtn === 1 && styles.focusedButtonOutline,
                       pressed && { opacity: 0.7 },
                     ]}
                     onPress={onClose}
@@ -825,7 +668,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                       styles.actionBtn,
                       styles.actionBtnPrimary,
                       { backgroundColor: colors.accent },
-                      focusedRow === 7 && focusedFooterBtn === 2 && styles.focusedButtonOutline,
+                      focusedRow === 5 && focusedFooterBtn === 2 && styles.focusedButtonOutline,
                       pressed && { opacity: 0.8 },
                     ]}
                     onPress={() => handleSave(false)}
@@ -844,7 +687,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                         styles.actionBtn,
                         styles.actionBtnLaunch,
                         { backgroundColor: colors.accentStrong },
-                        focusedRow === 7 && focusedFooterBtn === 3 && styles.focusedButtonOutline,
+                        focusedRow === 5 && focusedFooterBtn === 3 && styles.focusedButtonOutline,
                         pressed && { opacity: 0.8 },
                       ]}
                       onPress={() => handleSave(true)}
@@ -869,7 +712,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                       styles.portraitBtn,
                       styles.actionBtnPrimary,
                       { backgroundColor: colors.accent },
-                      focusedRow === 7 && focusedFooterBtn === 2 && styles.focusedButtonOutline,
+                      focusedRow === 5 && focusedFooterBtn === 2 && styles.focusedButtonOutline,
                       pressed && { opacity: 0.8 },
                     ]}
                     onPress={() => handleSave(false)}
@@ -889,7 +732,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                         styles.portraitBtn,
                         styles.actionBtnLaunch,
                         { backgroundColor: colors.accentStrong },
-                        focusedRow === 7 && focusedFooterBtn === 3 && styles.focusedButtonOutline,
+                        focusedRow === 5 && focusedFooterBtn === 3 && styles.focusedButtonOutline,
                         pressed && { opacity: 0.8 },
                       ]}
                       onPress={() => handleSave(true)}
@@ -910,7 +753,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                       styles.resetButton,
                       styles.portraitBtn,
                       { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                      focusedRow === 7 && focusedFooterBtn === 0 && styles.focusedButtonOutline,
+                      focusedRow === 5 && focusedFooterBtn === 0 && styles.focusedButtonOutline,
                       pressed && { opacity: 0.7 },
                     ]}
                     onPress={handleResetDefaults}
@@ -930,7 +773,7 @@ export const GameConfigModal: React.FC<GameConfigModalProps> = ({
                       styles.actionBtn,
                       styles.portraitBtn,
                       { borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-                      focusedRow === 7 && focusedFooterBtn === 1 && styles.focusedButtonOutline,
+                      focusedRow === 5 && focusedFooterBtn === 1 && styles.focusedButtonOutline,
                       pressed && { opacity: 0.7 },
                     ]}
                     onPress={onClose}
